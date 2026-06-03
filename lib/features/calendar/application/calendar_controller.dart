@@ -1,0 +1,411 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../database/app_database.dart';
+import '../../../features/recurring_event/recurring_event_models.dart';
+import '../../../features/recurring_event/recurring_event_repository.dart';
+import '../../../features/todo/todo_repository.dart';
+import '../../../services/festival_service.dart';
+import '../../../services/json_import_export_service.dart';
+import '../../../services/lunar_calendar_service.dart';
+import '../../../services/official_holiday_service.dart';
+import '../../../services/recurring_event_service.dart';
+import '../../../shared/utils/date_utils.dart';
+import '../domain/calendar_day.dart';
+
+class CalendarController extends ChangeNotifier {
+  CalendarController(
+    this._todoRepository,
+    this._recurringEventRepository,
+    this._lunarCalendarService,
+    this._festivalService,
+    this._officialHolidayService,
+    this._recurringEventService,
+    this._jsonImportExportService,
+  ) {
+    _selectedDate = dateOnly(DateTime.now());
+    _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
+  }
+
+  final TodoRepository _todoRepository;
+  final RecurringEventRepository _recurringEventRepository;
+  final LunarCalendarService _lunarCalendarService;
+  final FestivalService _festivalService;
+  final OfficialHolidayService _officialHolidayService;
+  final RecurringEventService _recurringEventService;
+  final JsonImportExportService _jsonImportExportService;
+
+  late DateTime _visibleMonth;
+  late DateTime _selectedDate;
+  List<TodoItem> _selectedTodos = [];
+  List<RecurringEvent> _recurringEvents = [];
+  List<_BaseCalendarDay>? _baseDaysCache;
+  String? _baseDaysCacheKey;
+  Map<String, List<TodoItem>> _visibleTodoMap = {};
+  Map<String, List<EventOccurrence>> _occurrenceMap = {};
+  LunarDateInfo? _selectedLunarInfoCache;
+  List<String>? _selectedFestivalsCache;
+  DateTime? _selectedInfoCacheDate;
+  StreamSubscription<List<TodoItem>>? _visibleTodoSubscription;
+  StreamSubscription<List<TodoItem>>? _selectedTodoSubscription;
+  StreamSubscription<List<RecurringEvent>>? _recurringEventSubscription;
+  bool _isReady = false;
+  String? _message;
+
+  DateTime get visibleMonth => _visibleMonth;
+  DateTime get selectedDate => _selectedDate;
+  bool get isReady => _isReady;
+  String? get message => _message;
+  List<TodoItem> get selectedTodos => _selectedTodos;
+  List<RecurringEvent> get recurringEvents => _recurringEvents;
+  LunarDateInfo get selectedLunarInfo {
+    _ensureSelectedInfoCache();
+    return _selectedLunarInfoCache!;
+  }
+
+  List<String> get selectedFestivals {
+    _ensureSelectedInfoCache();
+    return _selectedFestivalsCache!;
+  }
+  OfficialHolidayItem? get selectedOfficialHoliday =>
+      _officialHolidayService.getForDate(_selectedDate);
+  List<EventOccurrence> get selectedOccurrences {
+    final key = dateKey(_selectedDate);
+    return _occurrenceMap[key] ?? const [];
+  }
+
+  Future<void> initialize() async {
+    await _loadHolidayYearsForVisibleMonth();
+    _watchTodos();
+    _watchSelectedTodos();
+    _recurringEventSubscription =
+        _recurringEventRepository.watchEvents().listen((events) {
+      _recurringEvents = events;
+      _rebuildOccurrenceMap();
+      notifyListeners();
+    });
+    _isReady = true;
+    notifyListeners();
+  }
+
+  List<CalendarDay> buildDays() {
+    return _baseDays().map((baseDay) {
+      final key = dateKey(baseDay.date);
+      return CalendarDay(
+        date: baseDay.date,
+        isCurrentMonth: baseDay.isCurrentMonth,
+        isToday: baseDay.isToday,
+        isSelected: isSameDate(baseDay.date, _selectedDate),
+        lunarInfo: baseDay.lunarInfo,
+        festivals: baseDay.festivals,
+        todos: _visibleTodoMap[key] ?? const [],
+        recurringEvents: _occurrenceMap[key] ?? const [],
+        officialHoliday: baseDay.officialHoliday,
+      );
+    }).toList(growable: false);
+  }
+
+  void selectDate(DateTime date) {
+    final normalized = dateOnly(date);
+    if (isSameDate(normalized, _selectedDate)) {
+      return;
+    }
+    _selectedDate = normalized;
+    _invalidateSelectedInfoCache();
+    final monthChanged = _selectedDate.month != _visibleMonth.month ||
+        _selectedDate.year != _visibleMonth.year;
+    notifyListeners();
+
+    if (monthChanged) {
+      _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
+      _invalidateBaseDaysCache();
+      _loadHolidayYearsForVisibleMonth().then((_) {
+        _invalidateBaseDaysCache();
+        _watchTodos();
+        _rebuildOccurrenceMap();
+        notifyListeners();
+      });
+    }
+    _watchSelectedTodos();
+  }
+
+  Future<void> previousMonth() async {
+    _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1);
+    await _loadHolidayYearsForVisibleMonth();
+    _invalidateBaseDaysCache();
+    _watchTodos();
+    _rebuildOccurrenceMap();
+    notifyListeners();
+  }
+
+  Future<void> nextMonth() async {
+    _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1);
+    await _loadHolidayYearsForVisibleMonth();
+    _invalidateBaseDaysCache();
+    _watchTodos();
+    _rebuildOccurrenceMap();
+    notifyListeners();
+  }
+
+  Future<void> goToday() async {
+    final today = dateOnly(DateTime.now());
+    _selectedDate = today;
+    _visibleMonth = DateTime(today.year, today.month);
+    _invalidateSelectedInfoCache();
+    await _loadHolidayYearsForVisibleMonth();
+    _invalidateBaseDaysCache();
+    _watchTodos();
+    _watchSelectedTodos();
+    _rebuildOccurrenceMap();
+    notifyListeners();
+  }
+
+  Future<void> addTodo(String title, {String? note}) async {
+    if (title.trim().isEmpty) {
+      _setMessage('待办标题不能为空。');
+      return;
+    }
+    await _todoRepository.addTodo(title: title, date: _selectedDate, note: note);
+  }
+
+  Future<void> updateTodo(
+    TodoItem todo, {
+    String? title,
+    bool? isCompleted,
+    String? note,
+  }) async {
+    await _todoRepository.updateTodo(
+      id: todo.id,
+      title: title,
+      isCompleted: isCompleted,
+      note: note,
+    );
+  }
+
+  Future<void> deleteTodo(TodoItem todo) => _todoRepository.deleteTodo(todo.id);
+
+  Future<void> addRecurringEvent({
+    required String title,
+    required EventType eventType,
+    required CalendarType calendarType,
+    required int month,
+    required int day,
+    required bool isLeapMonth,
+    required LeapMonthPolicy leapMonthPolicy,
+    String? note,
+  }) async {
+    if (title.trim().isEmpty) {
+      _setMessage('标题不能为空。');
+      return;
+    }
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      _setMessage('日期必须是有效的月日。');
+      return;
+    }
+    await _recurringEventRepository.addEvent(
+      title: title,
+      eventType: eventType,
+      calendarType: calendarType,
+      month: month,
+      day: day,
+      isLeapMonth: isLeapMonth,
+      leapMonthPolicy: leapMonthPolicy,
+      note: note,
+    );
+  }
+
+  Future<void> updateRecurringEvent({
+    required int id,
+    required String title,
+    required EventType eventType,
+    required CalendarType calendarType,
+    required int month,
+    required int day,
+    required bool isLeapMonth,
+    required LeapMonthPolicy leapMonthPolicy,
+    required String? note,
+    required bool enabled,
+  }) {
+    return _recurringEventRepository.updateEvent(
+      id: id,
+      title: title,
+      eventType: eventType,
+      calendarType: calendarType,
+      month: month,
+      day: day,
+      isLeapMonth: isLeapMonth,
+      leapMonthPolicy: leapMonthPolicy,
+      note: note,
+      enabled: enabled,
+    );
+  }
+
+  Future<void> deleteRecurringEvent(int id) {
+    return _recurringEventRepository.deleteEvent(id);
+  }
+
+  Future<void> importRecurringEvents() async {
+    final picked = await FilePicker.pickFiles(
+      dialogTitle: '选择生日/纪念日 JSON',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    final path = picked?.files.single.path;
+    if (path == null) {
+      return;
+    }
+    final result = await _jsonImportExportService.importFromFile(path);
+    final errorText = result.hasErrors ? '，${result.errors.join('；')}' : '';
+    _setMessage('已导入 ${result.importedCount} 条规则$errorText');
+  }
+
+  Future<void> exportRecurringEvents() async {
+    final path = await FilePicker.saveFile(
+      dialogTitle: '导出生日/纪念日 JSON',
+      fileName: 'zrk_calendar_recurring_events.json',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    if (path == null) {
+      return;
+    }
+    await _jsonImportExportService.exportToFile(path);
+    _setMessage('已导出到 ${File(path).path}');
+  }
+
+  void clearMessage() {
+    _message = null;
+    notifyListeners();
+  }
+
+  Future<void> _loadHolidayYearsForVisibleMonth() async {
+    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
+    final end = start.add(const Duration(days: 41));
+    await _officialHolidayService.loadYears([start.year, _visibleMonth.year, end.year]);
+  }
+
+  void _watchTodos() {
+    _visibleTodoSubscription?.cancel();
+    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
+    final end = start.add(const Duration(days: 41));
+    _visibleTodoSubscription =
+        _todoRepository.watchTodosForRange(start, end).listen((todos) {
+      _visibleTodoMap = _todosByDate(todos);
+      notifyListeners();
+    });
+  }
+
+  void _watchSelectedTodos() {
+    _selectedTodoSubscription?.cancel();
+    _selectedTodoSubscription =
+        _todoRepository.watchTodosForDate(_selectedDate).listen((todos) {
+      _selectedTodos = todos;
+      notifyListeners();
+    });
+  }
+
+  void _rebuildOccurrenceMap() {
+    final years = <int>{_visibleMonth.year, _selectedDate.year};
+    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
+    final end = start.add(const Duration(days: 41));
+    years.add(start.year);
+    years.add(end.year);
+    _occurrenceMap =
+        _recurringEventService.occurrencesByDate(_recurringEvents, years);
+  }
+
+  List<_BaseCalendarDay> _baseDays() {
+    final today = dateOnly(DateTime.now());
+    final key =
+        '${_visibleMonth.year}-${_visibleMonth.month}-${dateKey(today)}';
+    if (_baseDaysCacheKey == key && _baseDaysCache != null) {
+      return _baseDaysCache!;
+    }
+
+    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final startOffset = first.weekday - DateTime.monday;
+    final start = first.subtract(Duration(days: startOffset));
+    final days = List.generate(42, (index) {
+      final date = start.add(Duration(days: index));
+      return _BaseCalendarDay(
+        date: date,
+        isCurrentMonth: date.month == _visibleMonth.month,
+        isToday: isSameDate(date, today),
+        lunarInfo: _lunarCalendarService.fromSolar(date),
+        festivals: _festivalService.festivalsFor(date),
+        officialHoliday: _officialHolidayService.getForDate(date),
+      );
+    }, growable: false);
+    _baseDaysCache = days;
+    _baseDaysCacheKey = key;
+    return days;
+  }
+
+  Map<String, List<TodoItem>> _todosByDate(List<TodoItem> todos) {
+    final todoMap = <String, List<TodoItem>>{};
+    for (final todo in todos) {
+      todoMap.putIfAbsent(dateKey(todo.date), () => []).add(todo);
+    }
+    return todoMap;
+  }
+
+  void _ensureSelectedInfoCache() {
+    if (_selectedInfoCacheDate != null &&
+        isSameDate(_selectedInfoCacheDate!, _selectedDate) &&
+        _selectedLunarInfoCache != null &&
+        _selectedFestivalsCache != null) {
+      return;
+    }
+    _selectedInfoCacheDate = _selectedDate;
+    _selectedLunarInfoCache = _lunarCalendarService.fromSolar(_selectedDate);
+    _selectedFestivalsCache = _festivalService.festivalsFor(_selectedDate);
+  }
+
+  void _invalidateSelectedInfoCache() {
+    _selectedInfoCacheDate = null;
+    _selectedLunarInfoCache = null;
+    _selectedFestivalsCache = null;
+  }
+
+  void _invalidateBaseDaysCache() {
+    _baseDaysCache = null;
+    _baseDaysCacheKey = null;
+  }
+
+  void _setMessage(String message) {
+    _message = message;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _visibleTodoSubscription?.cancel();
+    _selectedTodoSubscription?.cancel();
+    _recurringEventSubscription?.cancel();
+    super.dispose();
+  }
+}
+
+class _BaseCalendarDay {
+  const _BaseCalendarDay({
+    required this.date,
+    required this.isCurrentMonth,
+    required this.isToday,
+    required this.lunarInfo,
+    required this.festivals,
+    required this.officialHoliday,
+  });
+
+  final DateTime date;
+  final bool isCurrentMonth;
+  final bool isToday;
+  final LunarDateInfo lunarInfo;
+  final List<String> festivals;
+  final OfficialHolidayItem? officialHoliday;
+}
