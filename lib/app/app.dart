@@ -54,7 +54,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       controller: _controller,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'ZRK 日历',
+        title: 'EasyCalendar',
         theme: buildAppTheme(),
         home: FutureBuilder<void>(
           future: _initialization,

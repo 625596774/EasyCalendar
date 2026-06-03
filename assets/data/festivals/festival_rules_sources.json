@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "name": "EasyCalendar festival rules and source references",
+    "lastVerifiedDate": "2026-06-03",
+    "description": "本文件记录当前 FestivalService 使用的公历、农历和外国节日规则及其来源网站。应用运行时仍使用本地 Dart 规则，不依赖网络接口。",
+    "notes": [
+      "中国官方放假/补班安排与节日本身分开维护，具体休/班日期见 assets/data/holidays/china_official_2026.json。",
+      "除夕按农历当年最后一天判断，不写死为腊月三十。",
+      "清明节目前仅通过 2026 官方休/班配置显示，不作为跨年份节日本身规则计算。"
+    ]
+  },
+  "sourceGroups": [
+    {
+      "id": "gov-cn-2026-official-holidays",
+      "name": "中国政府网：国务院办公厅关于2026年部分节假日安排的通知",
+      "url": "https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm",
+      "publisher": "国务院办公厅 / 中国政府网",
+      "publishedDate": "2025-11-04",
+      "accessedDate": "2026-06-03",
+      "usedFor": "2026 年中国官方放假和补班安排；元旦、春节、清明节、劳动节、端午节、中秋节、国庆节官方休/班日期。"
+    },
+    {
+      "id": "cctv-traditional-festivals",
+      "name": "央视网：过节啦·中国传统节日",
+      "url": "https://tv.cctv.cn/special/zgctjr/festivalchina/index.shtml",
+      "publisher": "中央广播电视总台 / 央视网",
+      "accessedDate": "2026-06-03",
+      "usedFor": "春节、元宵节、端午节、七夕节、中秋节、重阳节等中国传统节日的农历日期。"
+    },
+    {
+      "id": "ccdi-chuxi",
+      "name": "中央纪委国家监委网站：欢欢喜喜过春节·年历",
+      "url": "https://m.ccdi.gov.cn/content/8b/a7/1662.html",
+      "publisher": "中央纪委国家监委网站",
+      "accessedDate": "2026-06-03",
+      "usedFor": "除夕为每年农历腊月最后一天、与春节首尾相连。"
+    },
+    {
+      "id": "britannica-valentines-day",
+      "name": "Encyclopaedia Britannica: Valentine's Day",
+      "url": "https://www.britannica.com/topic/Valentines-Day",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "情人节为 2 月 14 日。"
+    },
+    {
+      "id": "britannica-mothers-day",
+      "name": "Encyclopaedia Britannica: Mother's Day",
+      "url": "https://www.britannica.com/topic/Mothers-Day",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "母亲节在美国及许多国家为 5 月第二个星期日。"
+    },
+    {
+      "id": "britannica-fathers-day",
+      "name": "Encyclopaedia Britannica: Father's Day",
+      "url": "https://www.britannica.com/topic/Fathers-Day",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "父亲节在美国及许多国家为 6 月第三个星期日。"
+    },
+    {
+      "id": "britannica-thanksgiving-day",
+      "name": "Encyclopaedia Britannica: Thanksgiving Day",
+      "url": "https://www.britannica.com/topic/Thanksgiving-Day",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "美国感恩节为 11 月第四个星期四。"
+    },
+    {
+      "id": "britannica-halloween",
+      "name": "Encyclopaedia Britannica: Halloween",
+      "url": "https://www.britannica.com/topic/Halloween",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "万圣节前夜 / Halloween 为 10 月 31 日。"
+    },
+    {
+      "id": "britannica-christmas",
+      "name": "Encyclopaedia Britannica: Christmas",
+      "url": "https://www.britannica.com/topic/Christmas",
+      "publisher": "Encyclopaedia Britannica",
+      "accessedDate": "2026-06-03",
+      "usedFor": "圣诞节为 12 月 25 日。"
+    }
+  ],
+  "rules": [
+    {
+      "id": "new-years-day",
+      "displayName": "元旦",
+      "category": "solarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 1, "day": 1 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["gov-cn-2026-official-holidays"]
+    },
+    {
+      "id": "valentines-day",
+      "displayName": "情人节",
+      "category": "foreignSolarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 2, "day": 14 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-valentines-day"]
+    },
+    {
+      "id": "labor-day",
+      "displayName": "劳动节",
+      "category": "solarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 5, "day": 1 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["gov-cn-2026-official-holidays"]
+    },
+    {
+      "id": "national-day-cn",
+      "displayName": "国庆节",
+      "category": "solarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 10, "day": 1 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["gov-cn-2026-official-holidays"]
+    },
+    {
+      "id": "halloween",
+      "displayName": "万圣节",
+      "category": "foreignSolarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 10, "day": 31 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-halloween"]
+    },
+    {
+      "id": "christmas",
+      "displayName": "圣诞节",
+      "category": "foreignSolarFixed",
+      "calendarType": "solar",
+      "rule": { "month": 12, "day": 25 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-christmas"]
+    },
+    {
+      "id": "mothers-day",
+      "displayName": "母亲节",
+      "category": "foreignWeekBased",
+      "calendarType": "solar",
+      "rule": { "month": 5, "weekday": "sunday", "ordinal": 2 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-mothers-day"]
+    },
+    {
+      "id": "fathers-day",
+      "displayName": "父亲节",
+      "category": "foreignWeekBased",
+      "calendarType": "solar",
+      "rule": { "month": 6, "weekday": "sunday", "ordinal": 3 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-fathers-day"]
+    },
+    {
+      "id": "thanksgiving-us",
+      "displayName": "感恩节",
+      "category": "foreignWeekBased",
+      "calendarType": "solar",
+      "rule": { "month": 11, "weekday": "thursday", "ordinal": 4 },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["britannica-thanksgiving-day"]
+    },
+    {
+      "id": "spring-festival",
+      "displayName": "春节",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 1, "day": 1, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "lantern-festival",
+      "displayName": "元宵节",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 1, "day": 15, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "dragon-boat-festival",
+      "displayName": "端午节",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 5, "day": 5, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "qixi-festival",
+      "displayName": "七夕",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 7, "day": 7, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "mid-autumn-festival",
+      "displayName": "中秋节",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 8, "day": 15, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "double-ninth-festival",
+      "displayName": "重阳节",
+      "category": "lunarFixed",
+      "calendarType": "lunar",
+      "rule": { "month": 9, "day": 9, "excludeLeapMonth": true },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["cctv-traditional-festivals"]
+    },
+    {
+      "id": "chinese-new-years-eve",
+      "displayName": "除夕",
+      "category": "lunarYearEnd",
+      "calendarType": "lunar",
+      "rule": { "definition": "农历当年的最后一天，不固定为腊月三十" },
+      "implementedIn": "lib/services/festival_service.dart",
+      "sourceIds": ["ccdi-chuxi"]
+    }
+  ],
+  "officialHolidayFiles": [
+    {
+      "country": "CN",
+      "year": 2026,
+      "path": "assets/data/holidays/china_official_2026.json",
+      "sourceIds": ["gov-cn-2026-official-holidays"]
+    }
+  ]
+}

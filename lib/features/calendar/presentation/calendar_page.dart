@@ -7,6 +7,15 @@ import '../../../shared/utils/date_utils.dart' as app_date;
 import '../application/calendar_controller.dart';
 import '../domain/calendar_day.dart';
 
+const _jokeBearAssets = [
+  'assets/jokebear/1.jpg',
+  'assets/jokebear/2.jpg',
+  'assets/jokebear/3.jpg',
+  'assets/jokebear/4.jpg',
+  'assets/jokebear/5.jpg',
+  'assets/jokebear/6.jpg',
+];
+
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
@@ -22,30 +31,14 @@ class _CalendarPageState extends State<CalendarPage> {
     if (message != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
         controller.clearMessage();
       });
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ZRK 日历'),
-        actions: [
-          TextButton.icon(
-            onPressed: () => _showRecurringEventManager(context, controller),
-            icon: const Icon(Icons.cake_outlined),
-            label: const Text('生日/纪念日'),
-          ),
-          TextButton.icon(
-            onPressed: () => _showImportExportDialog(context, controller),
-            icon: const Icon(Icons.import_export),
-            label: const Text('导入/导出'),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
       body: Column(
         children: [
           _CalendarToolbar(controller: controller),
@@ -122,6 +115,17 @@ class _CalendarToolbar extends StatelessWidget {
             icon: const Icon(Icons.today_outlined),
             label: const Text('今天'),
           ),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: () => _showRecurringEventManager(context, controller),
+            icon: const Icon(Icons.cake_outlined),
+            label: const Text('生日/纪念日'),
+          ),
+          TextButton.icon(
+            onPressed: () => _showImportExportDialog(context, controller),
+            icon: const Icon(Icons.import_export),
+            label: const Text('导入/导出'),
+          ),
         ],
       ),
     );
@@ -156,20 +160,36 @@ class _MonthGrid extends StatelessWidget {
               .toList(),
         ),
         Expanded(
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              childAspectRatio: 1.22,
-            ),
-            itemCount: days.length,
-            itemBuilder: (context, index) {
-              return _CalendarDayCell(
-                key: ValueKey(app_date.dateKey(days[index].date)),
-                day: days[index],
-                onTap: () => controller.selectDate(days[index].date),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const mainAxisSpacing = 6.0;
+              const crossAxisSpacing = 6.0;
+              final rowCount = days.length ~/ 7;
+              final cellWidth =
+                  (constraints.maxWidth - crossAxisSpacing * 6) / 7;
+              final cellHeight =
+                  (constraints.maxHeight - mainAxisSpacing * (rowCount - 1)) /
+                  rowCount;
+              final childAspectRatio = cellWidth > 0 && cellHeight > 0
+                  ? cellWidth / cellHeight
+                  : 1.22;
+
+              return GridView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                  mainAxisSpacing: mainAxisSpacing,
+                  crossAxisSpacing: crossAxisSpacing,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemCount: days.length,
+                itemBuilder: (context, index) {
+                  return _CalendarDayCell(
+                    key: ValueKey(app_date.dateKey(days[index].date)),
+                    day: days[index],
+                    onTap: () => controller.selectDate(days[index].date),
+                  );
+                },
               );
             },
           ),
@@ -180,11 +200,7 @@ class _MonthGrid extends StatelessWidget {
 }
 
 class _CalendarDayCell extends StatelessWidget {
-  const _CalendarDayCell({
-    super.key,
-    required this.day,
-    required this.onTap,
-  });
+  const _CalendarDayCell({super.key, required this.day, required this.onTap});
 
   final CalendarDay day;
   final VoidCallback onTap;
@@ -196,13 +212,13 @@ class _CalendarDayCell extends StatelessWidget {
     final borderColor = day.isSelected
         ? scheme.primary
         : day.isToday
-            ? scheme.tertiary
-            : const Color(0xFFE2E2DD);
+        ? scheme.tertiary
+        : const Color(0xFFE2E2DD);
     final background = day.isSelected
         ? scheme.primaryContainer.withValues(alpha: 0.45)
         : day.isToday
-            ? scheme.tertiaryContainer.withValues(alpha: 0.45)
-            : Colors.white;
+        ? scheme.tertiaryContainer.withValues(alpha: 0.45)
+        : Colors.white;
     final textColor = muted ? const Color(0xFF9AA1A8) : const Color(0xFF1F2933);
     final allLabels = [
       ...day.festivals,
@@ -218,6 +234,11 @@ class _CalendarDayCell extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        mouseCursor: SystemMouseCursors.click,
         onTap: onTap,
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -238,91 +259,116 @@ class _CalendarDayCell extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (day.officialHoliday != null && constraints.maxWidth > 58)
+                    if (day.officialHoliday != null &&
+                        constraints.maxWidth > 58)
                       _TinyBadge(
                         text: day.officialHoliday!.status.label,
-                        isWorkday: day.officialHoliday!.status.value ==
+                        isWorkday:
+                            day.officialHoliday!.status.value ==
                             'adjustedWorkday',
                       ),
                   ],
                 ),
               );
             }
-            return Padding(
-              padding: const EdgeInsets.all(8),
-              child: ClipRect(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '${day.date.day}',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: textColor,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (day.officialHoliday != null)
-                          _TinyBadge(
-                            text: day.officialHoliday!.status.label,
-                            isWorkday: day.officialHoliday!.status.value ==
-                                'adjustedWorkday',
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      day.lunarInfo.day == 1
-                          ? '${day.lunarInfo.monthText}月'
-                          : day.lunarInfo.dayText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: textColor.withValues(alpha: 0.76),
-                      ),
-                    ),
-                    if (allLabels.isNotEmpty)
-                      Text(
-                        allLabels.take(2).join('、'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              muted ? const Color(0xFF9AA1A8) : scheme.primary,
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  if (day.isCurrentMonth && constraints.maxHeight >= 104)
+                    Positioned(
+                      right: 4,
+                      bottom: 3,
+                      child: IgnorePointer(
+                        child: _JokeBearImage(
+                          assetPath: _jokeBearAssetForDate(day.date),
+                          size: constraints.maxHeight < 128 ? 42 : 54,
+                          opacity: day.isSelected ? 0.18 : 0.12,
                         ),
                       ),
-                    const SizedBox(height: 2),
-                    ...day.todos.take(2).map(
-                          (todo) => Text(
-                            todo.title,
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: ClipRect(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '${day.date.day}',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: textColor,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (day.officialHoliday != null)
+                                _TinyBadge(
+                                  text: day.officialHoliday!.status.label,
+                                  isWorkday:
+                                      day.officialHoliday!.status.value ==
+                                      'adjustedWorkday',
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            day.lunarInfo.day == 1
+                                ? '${day.lunarInfo.monthText}月'
+                                : day.lunarInfo.dayText,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
-                              color: todo.isCompleted
-                                  ? const Color(0xFF9AA1A8)
-                                  : const Color(0xFF424A53),
-                              decoration: todo.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
+                              color: textColor.withValues(alpha: 0.76),
                             ),
                           ),
-                        ),
-                    if (day.todos.length > 2)
-                      Text(
-                        '还有 ${day.todos.length - 2} 项',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
-                        ),
+                          if (allLabels.isNotEmpty)
+                            Text(
+                              allLabels.take(2).join('、'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: muted
+                                    ? const Color(0xFF9AA1A8)
+                                    : scheme.primary,
+                              ),
+                            ),
+                          const SizedBox(height: 2),
+                          ...day.todos
+                              .take(2)
+                              .map(
+                                (todo) => Text(
+                                  todo.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: todo.isCompleted
+                                        ? const Color(0xFF9AA1A8)
+                                        : const Color(0xFF424A53),
+                                    decoration: todo.isCompleted
+                                        ? TextDecoration.lineThrough
+                                        : TextDecoration.none,
+                                  ),
+                                ),
+                              ),
+                          if (day.todos.length > 2)
+                            Text(
+                              '还有 ${day.todos.length - 2} 项',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -409,7 +455,7 @@ class _DayDetailPanel extends StatelessWidget {
             ),
             Expanded(
               child: controller.selectedTodos.isEmpty
-                  ? const Center(child: Text('今天还没有待办'))
+                  ? const _EmptyTodoState()
                   : ListView.separated(
                       itemCount: controller.selectedTodos.length,
                       separatorBuilder: (_, index) => const Divider(height: 1),
@@ -436,6 +482,63 @@ class _DayDetailPanel extends StatelessWidget {
   }
 }
 
+class _EmptyTodoState extends StatelessWidget {
+  const _EmptyTodoState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _JokeBearImage(
+            assetPath: 'assets/jokebear/3.jpg',
+            size: 108,
+            opacity: 0.86,
+          ),
+          SizedBox(height: 10),
+          Text('今天还没有待办'),
+        ],
+      ),
+    );
+  }
+}
+
+class _JokeBearImage extends StatelessWidget {
+  const _JokeBearImage({
+    required this.assetPath,
+    required this.size,
+    required this.opacity,
+  });
+
+  final String assetPath;
+  final double size;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: opacity,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset(
+          assetPath,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          cacheWidth: 160,
+        ),
+      ),
+    );
+  }
+}
+
+String _jokeBearAssetForDate(DateTime date) {
+  final index =
+      (date.year * 372 + date.month * 31 + date.day) % _jokeBearAssets.length;
+  return _jokeBearAssets[index];
+}
+
 class _InfoChip extends StatelessWidget {
   const _InfoChip(this.text);
 
@@ -452,10 +555,7 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _TodoRow extends StatelessWidget {
-  const _TodoRow({
-    required this.todo,
-    required this.controller,
-  });
+  const _TodoRow({required this.todo, required this.controller});
 
   final TodoItem todo;
   final CalendarController controller;
@@ -473,8 +573,9 @@ class _TodoRow extends StatelessWidget {
         todo.title,
         style: TextStyle(
           color: todo.isCompleted ? const Color(0xFF9AA1A8) : null,
-          decoration:
-              todo.isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+          decoration: todo.isCompleted
+              ? TextDecoration.lineThrough
+              : TextDecoration.none,
         ),
       ),
       subtitle: todo.note == null ? null : Text(todo.note!),
@@ -528,7 +629,10 @@ Future<void> _showTodoDialog(
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () async {
               if (isEditing) {
@@ -600,12 +704,15 @@ Future<void> _showRecurringEventDialog(
                           initialValue: eventType,
                           decoration: const InputDecoration(labelText: '类型'),
                           items: EventType.values
-                              .map((type) => DropdownMenuItem(
-                                    value: type,
-                                    child: Text(type.label),
-                                  ))
+                              .map(
+                                (type) => DropdownMenuItem(
+                                  value: type,
+                                  child: Text(type.label),
+                                ),
+                              )
                               .toList(),
-                          onChanged: (value) => setState(() => eventType = value!),
+                          onChanged: (value) =>
+                              setState(() => eventType = value!),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -614,10 +721,12 @@ Future<void> _showRecurringEventDialog(
                           initialValue: calendarType,
                           decoration: const InputDecoration(labelText: '日历'),
                           items: CalendarType.values
-                              .map((type) => DropdownMenuItem(
-                                    value: type,
-                                    child: Text(type.label),
-                                  ))
+                              .map(
+                                (type) => DropdownMenuItem(
+                                  value: type,
+                                  child: Text(type.label),
+                                ),
+                              )
                               .toList(),
                           onChanged: (value) {
                             setState(() {
@@ -639,7 +748,8 @@ Future<void> _showRecurringEventDialog(
                           initialValue: '$month',
                           decoration: const InputDecoration(labelText: '月'),
                           keyboardType: TextInputType.number,
-                          onChanged: (value) => month = int.tryParse(value) ?? month,
+                          onChanged: (value) =>
+                              month = int.tryParse(value) ?? month,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -648,7 +758,8 @@ Future<void> _showRecurringEventDialog(
                           initialValue: '$day',
                           decoration: const InputDecoration(labelText: '日'),
                           keyboardType: TextInputType.number,
-                          onChanged: (value) => day = int.tryParse(value) ?? day,
+                          onChanged: (value) =>
+                              day = int.tryParse(value) ?? day,
                         ),
                       ),
                     ],
@@ -666,10 +777,12 @@ Future<void> _showRecurringEventDialog(
                       initialValue: policy,
                       decoration: const InputDecoration(labelText: '闰月不存在时'),
                       items: LeapMonthPolicy.values
-                          .map((item) => DropdownMenuItem(
-                                value: item,
-                                child: Text(item.label),
-                              ))
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item.label),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) => setState(() => policy = value!),
                     ),
@@ -758,8 +871,9 @@ Future<void> _showRecurringEventManager(
                       itemBuilder: (context, index) {
                         final event = controller.recurringEvents[index];
                         final eventType = EventType.fromValue(event.eventType);
-                        final calendarType =
-                            CalendarType.fromValue(event.calendarType);
+                        final calendarType = CalendarType.fromValue(
+                          event.calendarType,
+                        );
                         final dateText =
                             '${calendarType.label}${event.isLeapMonth ? '闰' : ''}${event.month}月${event.day}日';
                         return ListTile(
@@ -823,7 +937,10 @@ Future<void> _showImportExportDialog(
         title: const Text('导入/导出'),
         content: const Text('第一版仅导入和导出生日、纪念日规则 JSON。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           OutlinedButton.icon(
             onPressed: () async {
               Navigator.pop(context);

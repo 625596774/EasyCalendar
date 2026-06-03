@@ -70,6 +70,7 @@ class CalendarController extends ChangeNotifier {
     _ensureSelectedInfoCache();
     return _selectedFestivalsCache!;
   }
+
   OfficialHolidayItem? get selectedOfficialHoliday =>
       _officialHolidayService.getForDate(_selectedDate);
   List<EventOccurrence> get selectedOccurrences {
@@ -81,31 +82,34 @@ class CalendarController extends ChangeNotifier {
     await _loadHolidayYearsForVisibleMonth();
     _watchTodos();
     _watchSelectedTodos();
-    _recurringEventSubscription =
-        _recurringEventRepository.watchEvents().listen((events) {
-      _recurringEvents = events;
-      _rebuildOccurrenceMap();
-      notifyListeners();
-    });
+    _recurringEventSubscription = _recurringEventRepository
+        .watchEvents()
+        .listen((events) {
+          _recurringEvents = events;
+          _rebuildOccurrenceMap();
+          notifyListeners();
+        });
     _isReady = true;
     notifyListeners();
   }
 
   List<CalendarDay> buildDays() {
-    return _baseDays().map((baseDay) {
-      final key = dateKey(baseDay.date);
-      return CalendarDay(
-        date: baseDay.date,
-        isCurrentMonth: baseDay.isCurrentMonth,
-        isToday: baseDay.isToday,
-        isSelected: isSameDate(baseDay.date, _selectedDate),
-        lunarInfo: baseDay.lunarInfo,
-        festivals: baseDay.festivals,
-        todos: _visibleTodoMap[key] ?? const [],
-        recurringEvents: _occurrenceMap[key] ?? const [],
-        officialHoliday: baseDay.officialHoliday,
-      );
-    }).toList(growable: false);
+    return _baseDays()
+        .map((baseDay) {
+          final key = dateKey(baseDay.date);
+          return CalendarDay(
+            date: baseDay.date,
+            isCurrentMonth: baseDay.isCurrentMonth,
+            isToday: baseDay.isToday,
+            isSelected: isSameDate(baseDay.date, _selectedDate),
+            lunarInfo: baseDay.lunarInfo,
+            festivals: baseDay.festivals,
+            todos: _visibleTodoMap[key] ?? const [],
+            recurringEvents: _occurrenceMap[key] ?? const [],
+            officialHoliday: baseDay.officialHoliday,
+          );
+        })
+        .toList(growable: false);
   }
 
   void selectDate(DateTime date) {
@@ -115,7 +119,8 @@ class CalendarController extends ChangeNotifier {
     }
     _selectedDate = normalized;
     _invalidateSelectedInfoCache();
-    final monthChanged = _selectedDate.month != _visibleMonth.month ||
+    final monthChanged =
+        _selectedDate.month != _visibleMonth.month ||
         _selectedDate.year != _visibleMonth.year;
     notifyListeners();
 
@@ -168,7 +173,11 @@ class CalendarController extends ChangeNotifier {
       _setMessage('待办标题不能为空。');
       return;
     }
-    await _todoRepository.addTodo(title: title, date: _selectedDate, note: note);
+    await _todoRepository.addTodo(
+      title: title,
+      date: _selectedDate,
+      note: note,
+    );
   }
 
   Future<void> updateTodo(
@@ -282,42 +291,44 @@ class CalendarController extends ChangeNotifier {
   }
 
   Future<void> _loadHolidayYearsForVisibleMonth() async {
-    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
-    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
-    final end = start.add(const Duration(days: 41));
-    await _officialHolidayService.loadYears([start.year, _visibleMonth.year, end.year]);
+    final range = _visibleMonthGridRange();
+    await _officialHolidayService.loadYears([
+      range.start.year,
+      _visibleMonth.year,
+      range.end.year,
+    ]);
   }
 
   void _watchTodos() {
     _visibleTodoSubscription?.cancel();
-    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
-    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
-    final end = start.add(const Duration(days: 41));
-    _visibleTodoSubscription =
-        _todoRepository.watchTodosForRange(start, end).listen((todos) {
-      _visibleTodoMap = _todosByDate(todos);
-      notifyListeners();
-    });
+    final range = _visibleMonthGridRange();
+    _visibleTodoSubscription = _todoRepository
+        .watchTodosForRange(range.start, range.end)
+        .listen((todos) {
+          _visibleTodoMap = _todosByDate(todos);
+          notifyListeners();
+        });
   }
 
   void _watchSelectedTodos() {
     _selectedTodoSubscription?.cancel();
-    _selectedTodoSubscription =
-        _todoRepository.watchTodosForDate(_selectedDate).listen((todos) {
-      _selectedTodos = todos;
-      notifyListeners();
-    });
+    _selectedTodoSubscription = _todoRepository
+        .watchTodosForDate(_selectedDate)
+        .listen((todos) {
+          _selectedTodos = todos;
+          notifyListeners();
+        });
   }
 
   void _rebuildOccurrenceMap() {
     final years = <int>{_visibleMonth.year, _selectedDate.year};
-    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
-    final start = first.subtract(Duration(days: first.weekday - DateTime.monday));
-    final end = start.add(const Duration(days: 41));
-    years.add(start.year);
-    years.add(end.year);
-    _occurrenceMap =
-        _recurringEventService.occurrencesByDate(_recurringEvents, years);
+    final range = _visibleMonthGridRange();
+    years.add(range.start.year);
+    years.add(range.end.year);
+    _occurrenceMap = _recurringEventService.occurrencesByDate(
+      _recurringEvents,
+      years,
+    );
   }
 
   List<_BaseCalendarDay> _baseDays() {
@@ -328,11 +339,10 @@ class CalendarController extends ChangeNotifier {
       return _baseDaysCache!;
     }
 
-    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
-    final startOffset = first.weekday - DateTime.monday;
-    final start = first.subtract(Duration(days: startOffset));
-    final days = List.generate(42, (index) {
-      final date = start.add(Duration(days: index));
+    final range = _visibleMonthGridRange();
+    final dayCount = range.end.difference(range.start).inDays + 1;
+    final days = List.generate(dayCount, (index) {
+      final date = range.start.add(Duration(days: index));
       return _BaseCalendarDay(
         date: date,
         isCurrentMonth: date.month == _visibleMonth.month,
@@ -345,6 +355,16 @@ class CalendarController extends ChangeNotifier {
     _baseDaysCache = days;
     _baseDaysCacheKey = key;
     return days;
+  }
+
+  _DateRange _visibleMonthGridRange() {
+    final first = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final last = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0);
+    final start = first.subtract(
+      Duration(days: first.weekday - DateTime.monday),
+    );
+    final end = last.add(Duration(days: DateTime.sunday - last.weekday));
+    return _DateRange(start: start, end: end);
   }
 
   Map<String, List<TodoItem>> _todosByDate(List<TodoItem> todos) {
@@ -408,4 +428,11 @@ class _BaseCalendarDay {
   final LunarDateInfo lunarInfo;
   final List<String> festivals;
   final OfficialHolidayItem? officialHoliday;
+}
+
+class _DateRange {
+  const _DateRange({required this.start, required this.end});
+
+  final DateTime start;
+  final DateTime end;
 }

@@ -16,4 +16,12 @@ void main() {
     expect(adjustedWorkday?.name, '春节');
     expect(adjustedWorkday?.status, OfficialHolidayStatus.adjustedWorkday);
   });
+
+  test('2027 官方假日占位文件不会生成未确认休班标记', () async {
+    final service = OfficialHolidayService();
+    await service.loadYear(2027);
+
+    expect(service.getForDate(DateTime(2027, 1, 1)), isNull);
+    expect(service.getForDate(DateTime(2027, 2, 6)), isNull);
+  });
 }

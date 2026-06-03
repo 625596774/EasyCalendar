@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "lastVerifiedAt": "2026-06-03",
+  "name": "EasyCalendar built-in festival rules",
+  "description": "This file records the offline festival rules implemented by FestivalService, plus source websites used to verify those rules. It is documentation/config metadata for maintainers; runtime festival calculation is still performed locally in Dart code.",
+  "sources": {
+    "govCnHolidayMethod2024": {
+      "title": "国务院关于修改《全国年节及纪念日放假办法》的决定",
+      "publisher": "中国政府网",
+      "url": "https://www.gov.cn/zhengce/zhengceku/202411/content_6986381.htm",
+      "notes": "Used for Chinese statutory festival dates such as 元旦 1月1日、春节农历除夕至正月初三、劳动节 5月1日/2日、国庆节 10月1日至3日, and for the principle that 清明、端午、中秋 are lunar/solar-term based statutory festivals."
+    },
+    "govCnOfficialHolidays2026": {
+      "title": "国务院办公厅关于2026年部分节假日安排的通知，国办发明电〔2025〕7号",
+      "publisher": "中国政府网",
+      "url": "https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm?sourcefrom=aladdin",
+      "notes": "Used for the concrete 2026 China official holiday and adjusted-workday data stored in assets/data/holidays/china_official_2026.json."
+    },
+    "cctvTraditionalFestivals": {
+      "title": "过节啦·中国传统节日",
+      "publisher": "央视网",
+      "url": "https://tv.cctv.com/special/zgctjr/festivalchina/index.shtml",
+      "notes": "Used to verify common Chinese lunar festival rules such as 元宵节、端午节、七夕、中秋节 and related traditional festival descriptions."
+    },
+    "hkoLunarConversion": {
+      "title": "公历与农历对照表",
+      "publisher": "香港天文台",
+      "url": "https://www.hko.gov.hk/sc/gts/time/conversion.htm",
+      "notes": "Used as an independent reference for Gregorian/lunar date cross-checks."
+    },
+    "hkoLunarConversion2026Data": {
+      "title": "公历与农历对照表（2026年）",
+      "publisher": "DATA.GOV.HK / 香港天文台",
+      "url": "https://data.gov.hk/sc-data/dataset/hk-hko-rss-gregorian-lunar-calendar-conversion-table/resource/384d45c0-c3c0-49bf-bd7f-57b7c9063056",
+      "notes": "Used to verify selected 2026 Gregorian dates for lunar festivals."
+    },
+    "britannicaValentinesDay": {
+      "title": "Valentine's Day",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Valentines-Day",
+      "notes": "Used for Valentine's Day on February 14."
+    },
+    "britannicaHalloween": {
+      "title": "Halloween",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Halloween",
+      "notes": "Used for Halloween on October 31."
+    },
+    "britannicaChristmas": {
+      "title": "Christmas",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Christmas",
+      "notes": "Used for Christmas on December 25."
+    },
+    "britannicaMothersDay": {
+      "title": "Mother's Day",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Mothers-Day",
+      "notes": "Used for the common U.S. rule: second Sunday in May."
+    },
+    "britannicaFathersDay": {
+      "title": "Father's Day",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Fathers-Day",
+      "notes": "Used for the common U.S. rule: third Sunday in June."
+    },
+    "britannicaThanksgiving": {
+      "title": "Thanksgiving Day",
+      "publisher": "Encyclopaedia Britannica",
+      "url": "https://www.britannica.com/topic/Thanksgiving-Day",
+      "notes": "Used for the U.S. rule: fourth Thursday in November."
+    },
+    "usaGovHolidays": {
+      "title": "American holidays",
+      "publisher": "USAGov",
+      "url": "https://www.usa.gov/holidays",
+      "notes": "Used as a U.S. government reference for New Year's Day, Thanksgiving Day and Christmas Day dates."
+    }
+  },
+  "solarFixedFestivals": [
+    {
+      "name": "元旦",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 1,
+      "day": 1,
+      "sourceRefs": ["govCnHolidayMethod2024", "usaGovHolidays"]
+    },
+    {
+      "name": "情人节",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 2,
+      "day": 14,
+      "sourceRefs": ["britannicaValentinesDay"]
+    },
+    {
+      "name": "劳动节",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 5,
+      "day": 1,
+      "sourceRefs": ["govCnHolidayMethod2024"]
+    },
+    {
+      "name": "国庆节",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 10,
+      "day": 1,
+      "sourceRefs": ["govCnHolidayMethod2024"]
+    },
+    {
+      "name": "万圣节",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 10,
+      "day": 31,
+      "sourceRefs": ["britannicaHalloween"]
+    },
+    {
+      "name": "圣诞节",
+      "calendarType": "solar",
+      "ruleType": "fixedDate",
+      "month": 12,
+      "day": 25,
+      "sourceRefs": ["britannicaChristmas", "usaGovHolidays"]
+    }
+  ],
+  "weekBasedFestivals": [
+    {
+      "name": "母亲节",
+      "calendarType": "solar",
+      "ruleType": "nthWeekdayOfMonth",
+      "month": 5,
+      "weekday": "sunday",
+      "nth": 2,
+      "sourceRefs": ["britannicaMothersDay"]
+    },
+    {
+      "name": "父亲节",
+      "calendarType": "solar",
+      "ruleType": "nthWeekdayOfMonth",
+      "month": 6,
+      "weekday": "sunday",
+      "nth": 3,
+      "sourceRefs": ["britannicaFathersDay"]
+    },
+    {
+      "name": "感恩节",
+      "calendarType": "solar",
+      "ruleType": "nthWeekdayOfMonth",
+      "month": 11,
+      "weekday": "thursday",
+      "nth": 4,
+      "region": "US",
+      "sourceRefs": ["britannicaThanksgiving", "usaGovHolidays"]
+    }
+  ],
+  "lunarFestivals": [
+    {
+      "name": "春节",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 1,
+      "day": 1,
+      "allowLeapMonth": false,
+      "sourceRefs": ["govCnHolidayMethod2024", "cctvTraditionalFestivals"]
+    },
+    {
+      "name": "元宵节",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 1,
+      "day": 15,
+      "allowLeapMonth": false,
+      "sourceRefs": ["cctvTraditionalFestivals"]
+    },
+    {
+      "name": "端午节",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 5,
+      "day": 5,
+      "allowLeapMonth": false,
+      "sourceRefs": ["govCnHolidayMethod2024", "cctvTraditionalFestivals"]
+    },
+    {
+      "name": "七夕",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 7,
+      "day": 7,
+      "allowLeapMonth": false,
+      "sourceRefs": ["cctvTraditionalFestivals"]
+    },
+    {
+      "name": "中秋节",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 8,
+      "day": 15,
+      "allowLeapMonth": false,
+      "sourceRefs": ["govCnHolidayMethod2024", "cctvTraditionalFestivals"]
+    },
+    {
+      "name": "重阳节",
+      "calendarType": "lunar",
+      "ruleType": "fixedLunarDate",
+      "month": 9,
+      "day": 9,
+      "allowLeapMonth": false,
+      "sourceRefs": ["cctvTraditionalFestivals"]
+    },
+    {
+      "name": "除夕",
+      "calendarType": "lunar",
+      "ruleType": "lastDayOfLunarYear",
+      "allowLeapMonth": false,
+      "sourceRefs": ["govCnHolidayMethod2024", "hkoLunarConversion"]
+    }
+  ],
+  "verifiedSamples2026": [
+    {
+      "date": "2026-02-16",
+      "expectedFestival": "除夕",
+      "expectedLunarDate": "腊月廿九",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-02-17",
+      "expectedFestival": "春节",
+      "expectedLunarDate": "正月初一",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-03-03",
+      "expectedFestival": "元宵节",
+      "expectedLunarDate": "正月十五",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-06-19",
+      "expectedFestival": "端午节",
+      "expectedLunarDate": "五月初五",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-08-19",
+      "expectedFestival": "七夕",
+      "expectedLunarDate": "七月初七",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-09-25",
+      "expectedFestival": "中秋节",
+      "expectedLunarDate": "八月十五",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-10-18",
+      "expectedFestival": "重阳节",
+      "expectedLunarDate": "九月初九",
+      "sourceRefs": ["hkoLunarConversion2026Data"]
+    },
+    {
+      "date": "2026-05-10",
+      "expectedFestival": "母亲节",
+      "sourceRefs": ["britannicaMothersDay"]
+    },
+    {
+      "date": "2026-06-21",
+      "expectedFestival": "父亲节",
+      "sourceRefs": ["britannicaFathersDay"]
+    },
+    {
+      "date": "2026-11-26",
+      "expectedFestival": "感恩节",
+      "sourceRefs": ["britannicaThanksgiving", "usaGovHolidays"]
+    }
+  ]
+}
