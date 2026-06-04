@@ -7,14 +7,8 @@ import '../../../shared/utils/date_utils.dart' as app_date;
 import '../application/calendar_controller.dart';
 import '../domain/calendar_day.dart';
 
-const _jokeBearAssets = [
-  'assets/jokebear/1.jpg',
-  'assets/jokebear/2.jpg',
-  'assets/jokebear/3.jpg',
-  'assets/jokebear/4.jpg',
-  'assets/jokebear/5.jpg',
-  'assets/jokebear/6.jpg',
-];
+const _jokeBearAssetCount = 193;
+const _jokeBearAssetDirectory = 'assets/jokebear';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -455,14 +449,11 @@ class _DayDetailPanel extends StatelessWidget {
             ),
             Expanded(
               child: controller.selectedTodos.isEmpty
-                  ? const _EmptyTodoState()
-                  : ListView.separated(
-                      itemCount: controller.selectedTodos.length,
-                      separatorBuilder: (_, index) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final todo = controller.selectedTodos[index];
-                        return _TodoRow(todo: todo, controller: controller);
-                      },
+                  ? _EmptyTodoState(date: selected)
+                  : _TodoListWithImage(
+                      date: selected,
+                      todos: controller.selectedTodos,
+                      controller: controller,
                     ),
             ),
             const Divider(height: 20),
@@ -482,22 +473,65 @@ class _DayDetailPanel extends StatelessWidget {
   }
 }
 
-class _EmptyTodoState extends StatelessWidget {
-  const _EmptyTodoState();
+class _TodoListWithImage extends StatelessWidget {
+  const _TodoListWithImage({
+    required this.date,
+    required this.todos,
+    required this.controller,
+  });
+
+  final DateTime date;
+  final List<TodoItem> todos;
+  final CalendarController controller;
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Stack(
+      children: [
+        Positioned(
+          right: 18,
+          bottom: 18,
+          child: IgnorePointer(
+            child: _JokeBearImage(
+              assetPath: _jokeBearAssetForDate(date),
+              size: 156,
+              opacity: 0.2,
+              cacheWidth: 320,
+            ),
+          ),
+        ),
+        ListView.separated(
+          itemCount: todos.length,
+          separatorBuilder: (_, index) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final todo = todos[index];
+            return _TodoRow(todo: todo, controller: controller);
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyTodoState extends StatelessWidget {
+  const _EmptyTodoState({required this.date});
+
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _JokeBearImage(
-            assetPath: 'assets/jokebear/3.jpg',
-            size: 108,
-            opacity: 0.86,
+            assetPath: _jokeBearAssetForDate(date),
+            size: 148,
+            opacity: 0.9,
+            cacheWidth: 300,
           ),
-          SizedBox(height: 10),
-          Text('今天还没有待办'),
+          const SizedBox(height: 12),
+          const Text('今天还没有待办'),
         ],
       ),
     );
@@ -509,11 +543,13 @@ class _JokeBearImage extends StatelessWidget {
     required this.assetPath,
     required this.size,
     required this.opacity,
+    this.cacheWidth = 160,
   });
 
   final String assetPath;
   final double size;
   final double opacity;
+  final int cacheWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -525,8 +561,8 @@ class _JokeBearImage extends StatelessWidget {
           assetPath,
           width: size,
           height: size,
-          fit: BoxFit.cover,
-          cacheWidth: 160,
+          fit: BoxFit.contain,
+          cacheWidth: cacheWidth,
         ),
       ),
     );
@@ -534,9 +570,10 @@ class _JokeBearImage extends StatelessWidget {
 }
 
 String _jokeBearAssetForDate(DateTime date) {
-  final index =
-      (date.year * 372 + date.month * 31 + date.day) % _jokeBearAssets.length;
-  return _jokeBearAssets[index];
+  final seed =
+      date.year * 73856093 ^ date.month * 19349663 ^ date.day * 83492791;
+  final index = seed.abs() % _jokeBearAssetCount + 1;
+  return '$_jokeBearAssetDirectory/$index.jpg';
 }
 
 class _InfoChip extends StatelessWidget {
