@@ -265,6 +265,14 @@ class _CalendarDayCell extends StatelessWidget {
                 ),
               );
             }
+            final availableTodoRows = _availableTodoRowsForCell(
+              cellHeight: constraints.maxHeight,
+              hasFestivalLine: allLabels.isNotEmpty,
+            );
+            final visibleTodoCount = _visibleTodoCount(
+              totalTodos: day.todos.length,
+              availableRows: availableTodoRows,
+            );
             return ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Stack(
@@ -333,7 +341,7 @@ class _CalendarDayCell extends StatelessWidget {
                             ),
                           const SizedBox(height: 2),
                           ...day.todos
-                              .take(2)
+                              .take(visibleTodoCount)
                               .map(
                                 (todo) => Text(
                                   todo.title,
@@ -350,9 +358,10 @@ class _CalendarDayCell extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                          if (day.todos.length > 2)
+                          if (day.todos.length > visibleTodoCount &&
+                              availableTodoRows > 0)
                             Text(
-                              '还有 ${day.todos.length - 2} 项',
+                              '还有 ${day.todos.length - visibleTodoCount} 项',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF6B7280),
@@ -370,6 +379,37 @@ class _CalendarDayCell extends StatelessWidget {
       ),
     );
   }
+}
+
+int _availableTodoRowsForCell({
+  required double cellHeight,
+  required bool hasFestivalLine,
+}) {
+  const verticalPadding = 16.0;
+  const dateRowHeight = 22.0;
+  const lunarLineHeight = 15.0;
+  const festivalLineHeight = 15.0;
+  const spacingHeight = 4.0;
+  const todoLineHeight = 15.0;
+
+  var usedHeight =
+      verticalPadding + dateRowHeight + lunarLineHeight + spacingHeight;
+  if (hasFestivalLine) {
+    usedHeight += festivalLineHeight;
+  }
+
+  final rows = ((cellHeight - usedHeight) / todoLineHeight).floor();
+  return rows < 0 ? 0 : rows;
+}
+
+int _visibleTodoCount({required int totalTodos, required int availableRows}) {
+  if (totalTodos <= 0 || availableRows <= 0) {
+    return 0;
+  }
+  if (totalTodos <= availableRows) {
+    return totalTodos;
+  }
+  return availableRows == 1 ? 0 : availableRows - 1;
 }
 
 class _TinyBadge extends StatelessWidget {
