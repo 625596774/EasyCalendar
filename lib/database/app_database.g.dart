@@ -11,16 +11,12 @@ class $TodoItemsTable extends TodoItems
   $TodoItemsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
     'id',
     aliasedName,
     false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
   );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
@@ -86,6 +82,40 @@ class $TodoItemsTable extends TodoItems
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<String> syncStatus = GeneratedColumn<String>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
+    'lastSyncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+    'last_synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -95,6 +125,9 @@ class $TodoItemsTable extends TodoItems
     note,
     createdAt,
     updatedAt,
+    deletedAt,
+    syncStatus,
+    lastSyncedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -110,6 +143,8 @@ class $TodoItemsTable extends TodoItems
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -158,6 +193,27 @@ class $TodoItemsTable extends TodoItems
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+        _lastSyncedAtMeta,
+        lastSyncedAt.isAcceptableOrUnknown(
+          data['last_synced_at']!,
+          _lastSyncedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -168,7 +224,7 @@ class $TodoItemsTable extends TodoItems
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return TodoItem(
       id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
       title: attachedDatabase.typeMapping.read(
@@ -195,6 +251,18 @@ class $TodoItemsTable extends TodoItems
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_synced_at'],
+      ),
     );
   }
 
@@ -205,13 +273,16 @@ class $TodoItemsTable extends TodoItems
 }
 
 class TodoItem extends DataClass implements Insertable<TodoItem> {
-  final int id;
+  final String id;
   final String title;
   final DateTime date;
   final bool isCompleted;
   final String? note;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
+  final String syncStatus;
+  final DateTime? lastSyncedAt;
   const TodoItem({
     required this.id,
     required this.title,
@@ -220,11 +291,14 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     this.note,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
+    required this.syncStatus,
+    this.lastSyncedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
+    map['id'] = Variable<String>(id);
     map['title'] = Variable<String>(title);
     map['date'] = Variable<DateTime>(date);
     map['is_completed'] = Variable<bool>(isCompleted);
@@ -233,6 +307,13 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
     return map;
   }
 
@@ -245,6 +326,13 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncStatus: Value(syncStatus),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
     );
   }
 
@@ -254,37 +342,46 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return TodoItem(
-      id: serializer.fromJson<int>(json['id']),
+      id: serializer.fromJson<String>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       date: serializer.fromJson<DateTime>(json['date']),
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       note: serializer.fromJson<String?>(json['note']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
+      'id': serializer.toJson<String>(id),
       'title': serializer.toJson<String>(title),
       'date': serializer.toJson<DateTime>(date),
       'isCompleted': serializer.toJson<bool>(isCompleted),
       'note': serializer.toJson<String?>(note),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'syncStatus': serializer.toJson<String>(syncStatus),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
     };
   }
 
   TodoItem copyWith({
-    int? id,
+    String? id,
     String? title,
     DateTime? date,
     bool? isCompleted,
     Value<String?> note = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    String? syncStatus,
+    Value<DateTime?> lastSyncedAt = const Value.absent(),
   }) => TodoItem(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -293,6 +390,9 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     note: note.present ? note.value : this.note,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncStatus: syncStatus ?? this.syncStatus,
+    lastSyncedAt: lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
   );
   TodoItem copyWithCompanion(TodoItemsCompanion data) {
     return TodoItem(
@@ -305,6 +405,13 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       note: data.note.present ? data.note.value : this.note,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
     );
   }
 
@@ -317,14 +424,27 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
           ..write('isCompleted: $isCompleted, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('lastSyncedAt: $lastSyncedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, date, isCompleted, note, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    date,
+    isCompleted,
+    note,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    syncStatus,
+    lastSyncedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -335,17 +455,24 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
           other.isCompleted == this.isCompleted &&
           other.note == this.note &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.syncStatus == this.syncStatus &&
+          other.lastSyncedAt == this.lastSyncedAt);
 }
 
 class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
-  final Value<int> id;
+  final Value<String> id;
   final Value<String> title;
   final Value<DateTime> date;
   final Value<bool> isCompleted;
   final Value<String?> note;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<String> syncStatus;
+  final Value<DateTime?> lastSyncedAt;
+  final Value<int> rowid;
   const TodoItemsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -354,27 +481,40 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     this.note = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
   });
   TodoItemsCompanion.insert({
-    this.id = const Value.absent(),
+    required String id,
     required String title,
     required DateTime date,
     this.isCompleted = const Value.absent(),
     this.note = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
-  }) : title = Value(title),
+    this.deletedAt = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
        date = Value(date),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<TodoItem> custom({
-    Expression<int>? id,
+    Expression<String>? id,
     Expression<String>? title,
     Expression<DateTime>? date,
     Expression<bool>? isCompleted,
     Expression<String>? note,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<String>? syncStatus,
+    Expression<DateTime>? lastSyncedAt,
+    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -384,17 +524,25 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
       if (note != null) 'note': note,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (rowid != null) 'rowid': rowid,
     });
   }
 
   TodoItemsCompanion copyWith({
-    Value<int>? id,
+    Value<String>? id,
     Value<String>? title,
     Value<DateTime>? date,
     Value<bool>? isCompleted,
     Value<String?>? note,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<String>? syncStatus,
+    Value<DateTime?>? lastSyncedAt,
+    Value<int>? rowid,
   }) {
     return TodoItemsCompanion(
       id: id ?? this.id,
@@ -404,6 +552,10 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncStatus: syncStatus ?? this.syncStatus,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -411,7 +563,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (id.present) {
-      map['id'] = Variable<int>(id.value);
+      map['id'] = Variable<String>(id.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -431,6 +583,18 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<String>(syncStatus.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
     return map;
   }
 
@@ -443,7 +607,11 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
           ..write('isCompleted: $isCompleted, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
@@ -457,16 +625,12 @@ class $RecurringEventsTable extends RecurringEvents
   $RecurringEventsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
     'id',
     aliasedName,
     false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
   );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
@@ -590,6 +754,40 @@ class $RecurringEventsTable extends RecurringEvents
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<String> syncStatus = GeneratedColumn<String>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
+    'lastSyncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+    'last_synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -604,6 +802,9 @@ class $RecurringEventsTable extends RecurringEvents
     enabled,
     createdAt,
     updatedAt,
+    deletedAt,
+    syncStatus,
+    lastSyncedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -619,6 +820,8 @@ class $RecurringEventsTable extends RecurringEvents
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -709,6 +912,27 @@ class $RecurringEventsTable extends RecurringEvents
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+        _lastSyncedAtMeta,
+        lastSyncedAt.isAcceptableOrUnknown(
+          data['last_synced_at']!,
+          _lastSyncedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -719,7 +943,7 @@ class $RecurringEventsTable extends RecurringEvents
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return RecurringEvent(
       id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
       title: attachedDatabase.typeMapping.read(
@@ -766,6 +990,18 @@ class $RecurringEventsTable extends RecurringEvents
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_synced_at'],
+      ),
     );
   }
 
@@ -776,7 +1012,7 @@ class $RecurringEventsTable extends RecurringEvents
 }
 
 class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
-  final int id;
+  final String id;
   final String title;
   final String eventType;
   final String calendarType;
@@ -788,6 +1024,9 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
   final bool enabled;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
+  final String syncStatus;
+  final DateTime? lastSyncedAt;
   const RecurringEvent({
     required this.id,
     required this.title,
@@ -801,11 +1040,14 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
     required this.enabled,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
+    required this.syncStatus,
+    this.lastSyncedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
+    map['id'] = Variable<String>(id);
     map['title'] = Variable<String>(title);
     map['event_type'] = Variable<String>(eventType);
     map['calendar_type'] = Variable<String>(calendarType);
@@ -819,6 +1061,13 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
     map['enabled'] = Variable<bool>(enabled);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
     return map;
   }
 
@@ -836,6 +1085,13 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
       enabled: Value(enabled),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncStatus: Value(syncStatus),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
     );
   }
 
@@ -845,7 +1101,7 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return RecurringEvent(
-      id: serializer.fromJson<int>(json['id']),
+      id: serializer.fromJson<String>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       eventType: serializer.fromJson<String>(json['eventType']),
       calendarType: serializer.fromJson<String>(json['calendarType']),
@@ -857,13 +1113,16 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
       enabled: serializer.fromJson<bool>(json['enabled']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
+      'id': serializer.toJson<String>(id),
       'title': serializer.toJson<String>(title),
       'eventType': serializer.toJson<String>(eventType),
       'calendarType': serializer.toJson<String>(calendarType),
@@ -875,11 +1134,14 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
       'enabled': serializer.toJson<bool>(enabled),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'syncStatus': serializer.toJson<String>(syncStatus),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
     };
   }
 
   RecurringEvent copyWith({
-    int? id,
+    String? id,
     String? title,
     String? eventType,
     String? calendarType,
@@ -891,6 +1153,9 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
     bool? enabled,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    String? syncStatus,
+    Value<DateTime?> lastSyncedAt = const Value.absent(),
   }) => RecurringEvent(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -904,6 +1169,9 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
     enabled: enabled ?? this.enabled,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncStatus: syncStatus ?? this.syncStatus,
+    lastSyncedAt: lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
   );
   RecurringEvent copyWithCompanion(RecurringEventsCompanion data) {
     return RecurringEvent(
@@ -925,6 +1193,13 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
     );
   }
 
@@ -942,7 +1217,10 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
           ..write('note: $note, ')
           ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('lastSyncedAt: $lastSyncedAt')
           ..write(')'))
         .toString();
   }
@@ -961,6 +1239,9 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
     enabled,
     createdAt,
     updatedAt,
+    deletedAt,
+    syncStatus,
+    lastSyncedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -977,11 +1258,14 @@ class RecurringEvent extends DataClass implements Insertable<RecurringEvent> {
           other.note == this.note &&
           other.enabled == this.enabled &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.syncStatus == this.syncStatus &&
+          other.lastSyncedAt == this.lastSyncedAt);
 }
 
 class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
-  final Value<int> id;
+  final Value<String> id;
   final Value<String> title;
   final Value<String> eventType;
   final Value<String> calendarType;
@@ -993,6 +1277,10 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
   final Value<bool> enabled;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<String> syncStatus;
+  final Value<DateTime?> lastSyncedAt;
+  final Value<int> rowid;
   const RecurringEventsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -1006,9 +1294,13 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
     this.enabled = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
   });
   RecurringEventsCompanion.insert({
-    this.id = const Value.absent(),
+    required String id,
     required String title,
     required String eventType,
     required String calendarType,
@@ -1020,7 +1312,12 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
     this.enabled = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
-  }) : title = Value(title),
+    this.deletedAt = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
        eventType = Value(eventType),
        calendarType = Value(calendarType),
        month = Value(month),
@@ -1028,7 +1325,7 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<RecurringEvent> custom({
-    Expression<int>? id,
+    Expression<String>? id,
     Expression<String>? title,
     Expression<String>? eventType,
     Expression<String>? calendarType,
@@ -1040,6 +1337,10 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
     Expression<bool>? enabled,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<String>? syncStatus,
+    Expression<DateTime>? lastSyncedAt,
+    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1054,11 +1355,15 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
       if (enabled != null) 'enabled': enabled,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+      if (rowid != null) 'rowid': rowid,
     });
   }
 
   RecurringEventsCompanion copyWith({
-    Value<int>? id,
+    Value<String>? id,
     Value<String>? title,
     Value<String>? eventType,
     Value<String>? calendarType,
@@ -1070,6 +1375,10 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
     Value<bool>? enabled,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<String>? syncStatus,
+    Value<DateTime?>? lastSyncedAt,
+    Value<int>? rowid,
   }) {
     return RecurringEventsCompanion(
       id: id ?? this.id,
@@ -1084,6 +1393,10 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
       enabled: enabled ?? this.enabled,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncStatus: syncStatus ?? this.syncStatus,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -1091,7 +1404,7 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (id.present) {
-      map['id'] = Variable<int>(id.value);
+      map['id'] = Variable<String>(id.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -1126,6 +1439,18 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<String>(syncStatus.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
     return map;
   }
 
@@ -1143,7 +1468,11 @@ class RecurringEventsCompanion extends UpdateCompanion<RecurringEvent> {
           ..write('note: $note, ')
           ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
@@ -1168,23 +1497,31 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 
 typedef $$TodoItemsTableCreateCompanionBuilder =
     TodoItemsCompanion Function({
-      Value<int> id,
+      required String id,
       required String title,
       required DateTime date,
       Value<bool> isCompleted,
       Value<String?> note,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<String> syncStatus,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
     });
 typedef $$TodoItemsTableUpdateCompanionBuilder =
     TodoItemsCompanion Function({
-      Value<int> id,
+      Value<String> id,
       Value<String> title,
       Value<DateTime> date,
       Value<bool> isCompleted,
       Value<String?> note,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<String> syncStatus,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
     });
 
 class $$TodoItemsTableFilterComposer
@@ -1196,7 +1533,7 @@ class $$TodoItemsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<int> get id => $composableBuilder(
+  ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnFilters(column),
   );
@@ -1230,6 +1567,21 @@ class $$TodoItemsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$TodoItemsTableOrderingComposer
@@ -1241,7 +1593,7 @@ class $$TodoItemsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<int> get id => $composableBuilder(
+  ColumnOrderings<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnOrderings(column),
   );
@@ -1275,6 +1627,21 @@ class $$TodoItemsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TodoItemsTableAnnotationComposer
@@ -1286,7 +1653,7 @@ class $$TodoItemsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<int> get id =>
+  GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
   GeneratedColumn<String> get title =>
@@ -1308,6 +1675,19 @@ class $$TodoItemsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$TodoItemsTableTableManager
@@ -1338,13 +1718,17 @@ class $$TodoItemsTableTableManager
               $$TodoItemsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
+                Value<String> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
               }) => TodoItemsCompanion(
                 id: id,
                 title: title,
@@ -1353,16 +1737,24 @@ class $$TodoItemsTableTableManager
                 note: note,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                syncStatus: syncStatus,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
+                required String id,
                 required String title,
                 required DateTime date,
                 Value<bool> isCompleted = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
               }) => TodoItemsCompanion.insert(
                 id: id,
                 title: title,
@@ -1371,6 +1763,10 @@ class $$TodoItemsTableTableManager
                 note: note,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                syncStatus: syncStatus,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -1396,7 +1792,7 @@ typedef $$TodoItemsTableProcessedTableManager =
     >;
 typedef $$RecurringEventsTableCreateCompanionBuilder =
     RecurringEventsCompanion Function({
-      Value<int> id,
+      required String id,
       required String title,
       required String eventType,
       required String calendarType,
@@ -1408,10 +1804,14 @@ typedef $$RecurringEventsTableCreateCompanionBuilder =
       Value<bool> enabled,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<String> syncStatus,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
     });
 typedef $$RecurringEventsTableUpdateCompanionBuilder =
     RecurringEventsCompanion Function({
-      Value<int> id,
+      Value<String> id,
       Value<String> title,
       Value<String> eventType,
       Value<String> calendarType,
@@ -1423,6 +1823,10 @@ typedef $$RecurringEventsTableUpdateCompanionBuilder =
       Value<bool> enabled,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<String> syncStatus,
+      Value<DateTime?> lastSyncedAt,
+      Value<int> rowid,
     });
 
 class $$RecurringEventsTableFilterComposer
@@ -1434,7 +1838,7 @@ class $$RecurringEventsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<int> get id => $composableBuilder(
+  ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnFilters(column),
   );
@@ -1493,6 +1897,21 @@ class $$RecurringEventsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$RecurringEventsTableOrderingComposer
@@ -1504,7 +1923,7 @@ class $$RecurringEventsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<int> get id => $composableBuilder(
+  ColumnOrderings<String> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnOrderings(column),
   );
@@ -1563,6 +1982,21 @@ class $$RecurringEventsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$RecurringEventsTableAnnotationComposer
@@ -1574,7 +2008,7 @@ class $$RecurringEventsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<int> get id =>
+  GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
   GeneratedColumn<String> get title =>
@@ -1615,6 +2049,19 @@ class $$RecurringEventsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$RecurringEventsTableTableManager
@@ -1654,7 +2101,7 @@ class $$RecurringEventsTableTableManager
               $$RecurringEventsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
+                Value<String> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> eventType = const Value.absent(),
                 Value<String> calendarType = const Value.absent(),
@@ -1666,6 +2113,10 @@ class $$RecurringEventsTableTableManager
                 Value<bool> enabled = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
               }) => RecurringEventsCompanion(
                 id: id,
                 title: title,
@@ -1679,10 +2130,14 @@ class $$RecurringEventsTableTableManager
                 enabled: enabled,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                syncStatus: syncStatus,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
+                required String id,
                 required String title,
                 required String eventType,
                 required String calendarType,
@@ -1694,6 +2149,10 @@ class $$RecurringEventsTableTableManager
                 Value<bool> enabled = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
               }) => RecurringEventsCompanion.insert(
                 id: id,
                 title: title,
@@ -1707,6 +2166,10 @@ class $$RecurringEventsTableTableManager
                 enabled: enabled,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                syncStatus: syncStatus,
+                lastSyncedAt: lastSyncedAt,
+                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

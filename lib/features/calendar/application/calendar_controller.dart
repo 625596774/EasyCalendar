@@ -234,7 +234,7 @@ class CalendarController extends ChangeNotifier {
   }
 
   Future<void> updateRecurringEvent({
-    required int id,
+    required String id,
     required String title,
     required EventType eventType,
     required CalendarType calendarType,
@@ -259,7 +259,7 @@ class CalendarController extends ChangeNotifier {
     );
   }
 
-  Future<void> deleteRecurringEvent(int id) {
+  Future<void> deleteRecurringEvent(String id) {
     return _recurringEventRepository.deleteEvent(id);
   }
 

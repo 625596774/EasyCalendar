@@ -1,17 +1,24 @@
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../database/app_database.dart';
 import 'recurring_event_models.dart';
 
 class RecurringEventRepository {
-  RecurringEventRepository(this._database);
+  RecurringEventRepository(this._database, {Uuid? uuid})
+    : _uuid = uuid ?? const Uuid();
+
+  static const pendingSyncStatus = 'pending';
 
   final AppDatabase _database;
+  final Uuid _uuid;
 
   Stream<List<RecurringEvent>> watchEvents() {
     return (_database.select(_database.recurringEvents)
+          ..where((row) => row.deletedAt.isNull())
           ..orderBy([
-            (row) => OrderingTerm(expression: row.enabled, mode: OrderingMode.desc),
+            (row) =>
+                OrderingTerm(expression: row.enabled, mode: OrderingMode.desc),
             (row) => OrderingTerm(expression: row.calendarType),
             (row) => OrderingTerm(expression: row.month),
             (row) => OrderingTerm(expression: row.day),
@@ -21,6 +28,7 @@ class RecurringEventRepository {
 
   Future<List<RecurringEvent>> getEvents({bool enabledOnly = false}) {
     final query = _database.select(_database.recurringEvents)
+      ..where((row) => row.deletedAt.isNull())
       ..orderBy([
         (row) => OrderingTerm(expression: row.calendarType),
         (row) => OrderingTerm(expression: row.month),
@@ -32,7 +40,17 @@ class RecurringEventRepository {
     return query.get();
   }
 
-  Future<int> addEvent({
+  Future<RecurringEvent?> getEventByIdIncludingDeleted(String id) {
+    return (_database.select(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<List<RecurringEvent>> getEventsIncludingDeleted() {
+    return _database.select(_database.recurringEvents).get();
+  }
+
+  Future<String> addEvent({
     required String title,
     required EventType eventType,
     required CalendarType calendarType,
@@ -42,10 +60,14 @@ class RecurringEventRepository {
     LeapMonthPolicy leapMonthPolicy = LeapMonthPolicy.useNormalMonth,
     String? note,
     bool enabled = true,
-  }) {
+  }) async {
+    final id = _uuid.v4();
     final now = DateTime.now();
-    return _database.into(_database.recurringEvents).insert(
+    await _database
+        .into(_database.recurringEvents)
+        .insert(
           RecurringEventsCompanion.insert(
+            id: id,
             title: title.trim(),
             eventType: eventType.value,
             calendarType: calendarType.value,
@@ -57,12 +79,14 @@ class RecurringEventRepository {
             enabled: Value(enabled),
             createdAt: now,
             updatedAt: now,
+            syncStatus: const Value(pendingSyncStatus),
           ),
         );
+    return id;
   }
 
   Future<void> updateEvent({
-    required int id,
+    required String id,
     required String title,
     required EventType eventType,
     required CalendarType calendarType,
@@ -73,9 +97,9 @@ class RecurringEventRepository {
     required String? note,
     required bool enabled,
   }) {
-    return (_database.update(_database.recurringEvents)
-          ..where((row) => row.id.equals(id)))
-        .write(
+    return (_database.update(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(id))).write(
       RecurringEventsCompanion(
         title: Value(title.trim()),
         eventType: Value(eventType.value),
@@ -87,13 +111,21 @@ class RecurringEventRepository {
         note: Value(note?.trim().isEmpty ?? true ? null : note!.trim()),
         enabled: Value(enabled),
         updatedAt: Value(DateTime.now()),
+        syncStatus: const Value(pendingSyncStatus),
       ),
     );
   }
 
-  Future<void> deleteEvent(int id) {
-    return (_database.delete(_database.recurringEvents)
-          ..where((row) => row.id.equals(id)))
-        .go();
+  Future<void> deleteEvent(String id) {
+    final now = DateTime.now();
+    return (_database.update(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(id))).write(
+      RecurringEventsCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+        syncStatus: const Value(pendingSyncStatus),
+      ),
+    );
   }
 }

@@ -59,7 +59,7 @@ class EventOccurrence {
     this.note,
   });
 
-  final int id;
+  final String id;
   final String title;
   final EventType eventType;
   final CalendarType calendarType;

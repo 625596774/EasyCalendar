@@ -6,10 +6,7 @@ import '../features/recurring_event/recurring_event_models.dart';
 import '../features/recurring_event/recurring_event_repository.dart';
 
 class ImportResult {
-  const ImportResult({
-    required this.importedCount,
-    required this.errors,
-  });
+  const ImportResult({required this.importedCount, required this.errors});
 
   final int importedCount;
   final List<String> errors;
@@ -99,7 +96,8 @@ class JsonImportExportService {
       final day = item['day'];
       final isLeapMonth = item['isLeapMonth'] ?? false;
       final leapMonthPolicyRaw =
-          item['leapMonthPolicy'] as String? ?? LeapMonthPolicy.useNormalMonth.value;
+          item['leapMonthPolicy'] as String? ??
+          LeapMonthPolicy.useNormalMonth.value;
       final enabled = item['enabled'] ?? true;
       final note = item['note'];
 
@@ -180,7 +178,10 @@ class JsonImportExportService {
     final payload = {
       'schemaVersion': 1,
       'exportedAt': DateTime.now().toIso8601String(),
-      'rules': events.map(_eventToJson).toList(),
+      'rules': events
+          .where((event) => event.deletedAt == null)
+          .map(_eventToJson)
+          .toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -206,10 +207,7 @@ class JsonImportExportService {
 }
 
 class ParsedRuleSet {
-  const ParsedRuleSet({
-    required this.rules,
-    required this.errors,
-  });
+  const ParsedRuleSet({required this.rules, required this.errors});
 
   final List<ParsedRecurringEventRule> rules;
   final List<String> errors;

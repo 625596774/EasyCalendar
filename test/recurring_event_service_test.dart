@@ -16,7 +16,7 @@ void main() {
     String leapMonthPolicy = 'useNormalMonth',
   }) {
     return RecurringEvent(
-      id: 1,
+      id: 'event-1',
       title: '测试生日',
       eventType: EventType.birthday.value,
       calendarType: calendarType,
@@ -28,6 +28,9 @@ void main() {
       enabled: true,
       createdAt: now,
       updatedAt: now,
+      deletedAt: null,
+      syncStatus: 'pending',
+      lastSyncedAt: null,
     );
   }
 

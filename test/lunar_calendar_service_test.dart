@@ -17,9 +17,13 @@ void main() {
   });
 
   test('农历转公历', () {
-    expect(service.toSolar(lunarYear: 2026, lunarMonth: 1, lunarDay: 1),
-        DateTime(2026, 2, 17));
-    expect(service.toSolar(lunarYear: 2026, lunarMonth: 8, lunarDay: 15),
-        DateTime(2026, 9, 25));
+    expect(
+      service.toSolar(lunarYear: 2026, lunarMonth: 1, lunarDay: 1),
+      DateTime(2026, 2, 17),
+    );
+    expect(
+      service.toSolar(lunarYear: 2026, lunarMonth: 8, lunarDay: 15),
+      DateTime(2026, 9, 25),
+    );
   });
 }
