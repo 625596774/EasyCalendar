@@ -2,13 +2,16 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../database/app_database.dart';
+import '../../services/sync/sync_models.dart';
 import 'recurring_event_models.dart';
 
 class RecurringEventRepository {
   RecurringEventRepository(this._database, {Uuid? uuid})
     : _uuid = uuid ?? const Uuid();
 
-  static const pendingSyncStatus = 'pending';
+  static const pendingSyncStatus = SyncRecordStatus.pending;
+  static const syncedSyncStatus = SyncRecordStatus.synced;
+  static const failedSyncStatus = SyncRecordStatus.failed;
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -50,6 +53,15 @@ class RecurringEventRepository {
     return _database.select(_database.recurringEvents).get();
   }
 
+  Future<List<RecurringEvent>> getPendingEventsIncludingDeleted() {
+    return (_database.select(_database.recurringEvents)..where(
+          (row) =>
+              row.syncStatus.equals(pendingSyncStatus) |
+              row.syncStatus.equals(failedSyncStatus),
+        ))
+        .get();
+  }
+
   Future<String> addEvent({
     required String title,
     required EventType eventType,
@@ -62,7 +74,7 @@ class RecurringEventRepository {
     bool enabled = true,
   }) async {
     final id = _uuid.v4();
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
     await _database
         .into(_database.recurringEvents)
         .insert(
@@ -110,14 +122,14 @@ class RecurringEventRepository {
         leapMonthPolicy: Value(leapMonthPolicy.value),
         note: Value(note?.trim().isEmpty ?? true ? null : note!.trim()),
         enabled: Value(enabled),
-        updatedAt: Value(DateTime.now()),
+        updatedAt: Value(DateTime.now().toUtc()),
         syncStatus: const Value(pendingSyncStatus),
       ),
     );
   }
 
   Future<void> deleteEvent(String id) {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
     return (_database.update(
       _database.recurringEvents,
     )..where((row) => row.id.equals(id))).write(
@@ -126,6 +138,76 @@ class RecurringEventRepository {
         updatedAt: Value(now),
         syncStatus: const Value(pendingSyncStatus),
       ),
+    );
+  }
+
+  Future<void> upsertFromSync(
+    RecurringEventSyncRecord record, {
+    required DateTime syncedAt,
+  }) async {
+    final existing = await getEventByIdIncludingDeleted(record.id);
+    if (existing == null) {
+      await _database
+          .into(_database.recurringEvents)
+          .insert(
+            RecurringEventsCompanion.insert(
+              id: record.id,
+              title: record.title,
+              eventType: record.eventType,
+              calendarType: record.calendarType,
+              month: record.month,
+              day: record.day,
+              isLeapMonth: Value(record.isLeapMonth),
+              leapMonthPolicy: Value(record.leapMonthPolicy),
+              note: Value(record.note),
+              enabled: Value(record.enabled),
+              createdAt: record.createdAt.toUtc(),
+              updatedAt: record.updatedAt.toUtc(),
+              deletedAt: Value(record.deletedAt?.toUtc()),
+              syncStatus: const Value(syncedSyncStatus),
+              lastSyncedAt: Value(syncedAt.toUtc()),
+            ),
+          );
+      return;
+    }
+    await (_database.update(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(record.id))).write(
+      RecurringEventsCompanion(
+        title: Value(record.title),
+        eventType: Value(record.eventType),
+        calendarType: Value(record.calendarType),
+        month: Value(record.month),
+        day: Value(record.day),
+        isLeapMonth: Value(record.isLeapMonth),
+        leapMonthPolicy: Value(record.leapMonthPolicy),
+        note: Value(record.note),
+        enabled: Value(record.enabled),
+        createdAt: Value(record.createdAt.toUtc()),
+        updatedAt: Value(record.updatedAt.toUtc()),
+        deletedAt: Value(record.deletedAt?.toUtc()),
+        syncStatus: const Value(syncedSyncStatus),
+        lastSyncedAt: Value(syncedAt.toUtc()),
+      ),
+    );
+  }
+
+  Future<void> markEventSynced(String id, DateTime syncedAt) {
+    return (_database.update(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(id))).write(
+      RecurringEventsCompanion(
+        syncStatus: const Value(syncedSyncStatus),
+        lastSyncedAt: Value(syncedAt.toUtc()),
+      ),
+    );
+  }
+
+  Future<void> markEventSyncFailed(String id) {
+    return (_database.update(
+      _database.recurringEvents,
+    )..where((row) => row.id.equals(id))).write(
+      const RecurringEventsCompanion(syncStatus: Value(failedSyncStatus)),
     );
   }
 }

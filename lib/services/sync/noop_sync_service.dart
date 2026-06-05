@@ -4,15 +4,16 @@ import 'sync_service.dart';
 import 'sync_state.dart';
 
 class NoopSyncService implements SyncService {
-  NoopSyncService();
+  NoopSyncService({String? message})
+    : _state = SyncState(
+        status: SyncStateStatus.disabled,
+        message: message ?? '当前版本尚未启用云同步。',
+      );
 
   final StreamController<SyncState> _controller =
       StreamController<SyncState>.broadcast();
 
-  SyncState _state = const SyncState(
-    status: SyncStateStatus.disabled,
-    message: '当前版本尚未启用云同步。',
-  );
+  SyncState _state;
 
   @override
   Stream<SyncState> watchState() async* {

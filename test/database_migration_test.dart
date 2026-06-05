@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:zrk_calendar/database/app_database.dart';
 import 'package:zrk_calendar/features/recurring_event/recurring_event_repository.dart';
 import 'package:zrk_calendar/features/todo/todo_repository.dart';
@@ -18,7 +17,7 @@ void main() {
       }
     });
     final file = File('${directory.path}/zrk_calendar.sqlite');
-    _createV1Database(file);
+    await _createV1Database(file);
 
     final database = AppDatabase(NativeDatabase(file));
     addTearDown(database.close);
@@ -44,10 +43,11 @@ void main() {
   });
 }
 
-void _createV1Database(File file) {
-  final database = sqlite.sqlite3.open(file.path);
-  try {
-    database.execute('''
+Future<void> _createV1Database(File file) async {
+  final now = DateTime(2026, 6, 5).millisecondsSinceEpoch;
+  final date = DateTime(2026, 6, 6).millisecondsSinceEpoch;
+  final sql =
+      '''
 CREATE TABLE todo_items (
   id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
@@ -57,8 +57,7 @@ CREATE TABLE todo_items (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-''');
-    database.execute('''
+
 CREATE TABLE recurring_events (
   id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
@@ -73,11 +72,7 @@ CREATE TABLE recurring_events (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-''');
-    final now = DateTime(2026, 6, 5).millisecondsSinceEpoch;
-    final date = DateTime(2026, 6, 6).millisecondsSinceEpoch;
-    database.execute(
-      '''
+
 INSERT INTO todo_items (
   title,
   date,
@@ -85,12 +80,8 @@ INSERT INTO todo_items (
   note,
   created_at,
   updated_at
-) VALUES (?, ?, 0, NULL, ?, ?);
-''',
-      ['旧待办', date, now, now],
-    );
-    database.execute(
-      '''
+) VALUES ('旧待办', $date, 0, NULL, $now, $now);
+
 INSERT INTO recurring_events (
   title,
   event_type,
@@ -103,13 +94,13 @@ INSERT INTO recurring_events (
   enabled,
   created_at,
   updated_at
-) VALUES (?, 'birthday', 'solar', 8, 16, 0, 'useNormalMonth', NULL, 1, ?, ?);
-''',
-      ['旧生日', now, now],
-    );
-    database.execute('PRAGMA user_version = 1;');
-  } finally {
-    database.close();
+) VALUES ('旧生日', 'birthday', 'solar', 8, 16, 0, 'useNormalMonth', NULL, 1, $now, $now);
+
+PRAGMA user_version = 1;
+''';
+  final result = await Process.run('sqlite3', [file.path, sql]);
+  if (result.exitCode != 0) {
+    throw StateError('sqlite3 创建旧数据库失败：${result.stderr}');
   }
 }
 

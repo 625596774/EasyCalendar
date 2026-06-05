@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../database/app_database.dart';
@@ -10,12 +12,18 @@ import '../services/json_import_export_service.dart';
 import '../services/lunar_calendar_service.dart';
 import '../services/official_holiday_service.dart';
 import '../services/recurring_event_service.dart';
+import '../services/sync/noop_sync_service.dart';
+import '../services/sync/supabase_bootstrap.dart';
+import '../services/sync/supabase_sync_service.dart';
+import '../services/sync/sync_service.dart';
 import '../services/todo_completion_sound_service.dart';
 import 'app_scope.dart';
 import 'theme/app_theme.dart';
 
 class ZrkCalendarApp extends StatefulWidget {
-  const ZrkCalendarApp({super.key});
+  const ZrkCalendarApp({super.key, required this.supabaseBootstrap});
+
+  final SupabaseBootstrapResult supabaseBootstrap;
 
   @override
   State<ZrkCalendarApp> createState() => _ZrkCalendarAppState();
@@ -24,6 +32,7 @@ class ZrkCalendarApp extends StatefulWidget {
 class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
   late final AppDatabase _database;
   late final CalendarController _controller;
+  late final SyncService _syncService;
   late final Future<void> _initialization;
 
   @override
@@ -39,6 +48,14 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
     final importExportService = JsonImportExportService(
       recurringEventRepository,
     );
+    final supabaseClient = widget.supabaseBootstrap.client;
+    _syncService = supabaseClient == null
+        ? NoopSyncService(message: widget.supabaseBootstrap.message)
+        : SupabaseSyncService(
+            client: supabaseClient,
+            todoRepository: todoRepository,
+            recurringEventRepository: recurringEventRepository,
+          );
     const todoCompletionSoundService = TodoCompletionSoundService();
     _controller = CalendarController(
       todoRepository,
@@ -51,12 +68,14 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       todoCompletionSoundService,
     );
     _initialization = _controller.initialize();
+    unawaited(_syncService.initialize());
   }
 
   @override
   Widget build(BuildContext context) {
     return AppScope(
       controller: _controller,
+      syncService: _syncService,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'EasyCalendar',
@@ -82,6 +101,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
   @override
   void dispose() {
     _controller.dispose();
+    unawaited(_syncService.dispose());
     _database.close();
     super.dispose();
   }

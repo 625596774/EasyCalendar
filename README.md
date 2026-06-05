@@ -1,6 +1,6 @@
 # zrk_calendar
 
-一个用 Flutter + Drift 打造的本地离线个人日历。它面向 Ubuntu Linux 桌面端，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都保存在本机 SQLite 数据库中，不需要登录，当前不连接云端，也不依赖运行时网络接口。
+一个用 Flutter + Drift 打造的个人日历。它面向 Ubuntu Linux 桌面端，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都会保存在本机 SQLite 数据库中；如果配置 Supabase，也可以使用邮箱密码登录后手动云同步。
 
 适合想要一个“轻一点、私有一点、能看农历和调休”的个人桌面日历的人。当前版本是第一版可运行实现，重点放在本地持久化、月视图、待办、生日纪念日规则和 JSON 导入导出。
 
@@ -12,7 +12,7 @@
 - 生日/纪念日支持公历或农历每年重复，预留农历闰月策略。
 - 生日/纪念日规则支持 JSON 导入导出。
 - 使用 Drift + SQLite 本地保存数据，应用关闭后仍保留。
-- 用户数据使用 UUID、软删除和同步预留字段，方便后续接入多端云同步。
+- 用户数据使用 UUID、软删除和同步字段，支持 Supabase 云同步第一版。
 - 官方假期和节日规则均为本地数据或本地规则。
 
 ## 运行
@@ -49,7 +49,7 @@ lib/
 │   ├── recurring_event/         # 生日/纪念日模型与 repository
 │   └── todo/                    # 待办 repository
 ├── services/                    # 农历、节日、假期、导入导出、重复事件生成
-│   └── sync/                    # 云同步接口与 Noop 空实现
+│   └── sync/                    # Supabase 同步、同步模型与 Noop 本地模式
 └── shared/                      # 日期工具等共享代码
 assets/data/holidays/            # 官方休班安排 JSON
 assets/data/festivals/           # 节日规则和来源说明 JSON
@@ -90,22 +90,63 @@ test/                            # 单元测试
 
 新增、编辑、完成/取消完成、删除都会更新 `updated_at` 并将 `sync_status` 标记为 `pending`。删除不会物理移除记录，而是写入 `deleted_at`；默认查询和界面展示都会过滤软删除记录。
 
-## 云同步准备状态
+## Supabase 云同步
 
-当前版本尚未接入真实云同步，但本地数据库已经改造为同步友好结构：
+当前版本已接入 Supabase 云同步第一版：
 
-- 用户数据使用 UUID 主键，便于多端合并。
-- 删除采用 `deleted_at` 软删除，方便未来把删除操作同步到云端。
-- 本地变更会标记 `sync_status = pending`。
-- 预留 `last_synced_at`。
-- 预留 `SyncService` 接口和 `NoopSyncService` 空实现。
-- 后续可接入 Supabase 等云端小数据库。
+- 支持邮箱密码登录和退出登录。
+- 支持点击顶部“同步”入口后手动同步。
+- App 启动后如果已有 Supabase session，会自动同步一次。
+- 同步范围包括 `todo_items` 和 `recurring_events`。
+- 本地未配置 Supabase 或未登录时，日历、待办、生日/纪念日仍可离线使用。
+- 当前不支持实时同步、OAuth、多人共享或服务端函数。
+- 冲突策略为 `updated_at` 后写 wins，不创建冲突副本。
+
+`.env` 配置示例见 `.env.example`：
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+```
+
+`SUPABASE_URL` 不要包含 `/rest/v1/`。当前桌面版会先从运行目录读取 `.env`，如果没找到，会从应用可执行文件所在目录向上查找父目录；开发时通常放在项目根目录即可。发布后如果需要云同步，也可以把同样格式的 `.env` 放在可执行文件旁边。
+
+Supabase 云端表需要开启 RLS，并确保用户只能读写自己的数据。云端表结构：
+
+`todo_items`
+
+- `id uuid primary key`
+- `user_id uuid not null references auth.users(id)`
+- `title text not null`
+- `date date not null`
+- `is_completed boolean not null`
+- `note text`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
+- `deleted_at timestamptz`
+
+`recurring_events`
+
+- `id uuid primary key`
+- `user_id uuid not null references auth.users(id)`
+- `title text not null`
+- `event_type text not null`
+- `calendar_type text not null`
+- `month int not null`
+- `day int not null`
+- `is_leap_month boolean not null`
+- `leap_month_policy text not null`
+- `note text`
+- `enabled boolean not null`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
+- `deleted_at timestamptz`
 
 安全注意：
 
 - `.env`、本地 SQLite 数据库、个人导入导出的 JSON 文件不应提交到 Git。
-- Supabase 的 `service_role` key 未来绝不能写入 Flutter 客户端或 GitHub。
-- Flutter 客户端未来只能使用 Supabase URL 和 publishable/anon key。
+- Supabase 的 `service_role` key、database password、secret key 绝不能写入 Flutter 客户端或 GitHub。
+- Flutter 客户端只能使用 Supabase URL 和 publishable/anon key。
 - 真正的安全边界依赖 Supabase RLS 规则，而不是把 key 藏在客户端代码里。
 
 ## JSON 导入导出
@@ -184,11 +225,12 @@ Schema 要点：
 - sqlite3_flutter_libs：随应用提供 SQLite 动态库，MIT。
 - lunar：农历转换，本地离线使用，MIT。
 - file_picker：JSON 文件导入导出选择器，MIT。
+- supabase_flutter：Supabase Auth 和 PostgREST 云同步客户端，MIT。
+- flutter_dotenv：读取本地 `.env` 中的 Supabase URL 和 publishable key，MIT。
 - path / path_provider：本地数据库路径，BSD-3-Clause。
 - intl / collection：日期文本和集合工具，BSD-3-Clause。
 - uuid：为本地用户数据生成同步友好的 UUID 主键，MIT。
-- sqlite3：测试中创建旧版临时数据库以验证迁移，MIT。
 
 ## 第一版范围外
 
-当前不做登录注册、真实云同步、多人共享、系统通知、AI 排程、系统日历双向同步、iPhone 打包发布、复杂项目管理和所有国家地区官方假期。
+当前不做实时同步、OAuth 第三方登录、多人共享、系统通知、AI 排程、系统日历双向同步、iPhone 打包发布、复杂项目管理和所有国家地区官方假期。

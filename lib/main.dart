@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'services/sync/supabase_bootstrap.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ZrkCalendarApp());
+  final supabaseBootstrap = await initializeSupabaseFromDotEnv();
+  runApp(ZrkCalendarApp(supabaseBootstrap: supabaseBootstrap));
 }

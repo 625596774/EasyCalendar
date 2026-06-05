@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../app/app_scope.dart';
 import '../../../database/app_database.dart';
 import '../../../features/recurring_event/recurring_event_models.dart';
+import '../../../services/sync/sync_service.dart';
+import '../../../services/sync/sync_state.dart';
 import '../../../shared/utils/date_utils.dart' as app_date;
 import '../application/calendar_controller.dart';
 import '../domain/calendar_day.dart';
@@ -110,6 +112,11 @@ class _CalendarToolbar extends StatelessWidget {
             label: const Text('今天'),
           ),
           const Spacer(),
+          TextButton.icon(
+            onPressed: () => _showSyncDialog(context),
+            icon: const Icon(Icons.cloud_sync_outlined),
+            label: const Text('同步'),
+          ),
           TextButton.icon(
             onPressed: () => _showRecurringEventManager(context, controller),
             icon: const Icon(Icons.cake_outlined),
@@ -732,6 +739,180 @@ Future<void> _showTodoDialog(
       );
     },
   );
+}
+
+Future<void> _showSyncDialog(BuildContext context) async {
+  final syncService = AppScope.syncOf(context);
+  await showDialog<void>(
+    context: context,
+    builder: (context) => _SyncDialog(syncService: syncService),
+  );
+}
+
+class _SyncDialog extends StatefulWidget {
+  const _SyncDialog({required this.syncService});
+
+  final SyncService syncService;
+
+  @override
+  State<_SyncDialog> createState() => _SyncDialogState();
+}
+
+class _SyncDialogState extends State<_SyncDialog> {
+  late final Stream<SyncState> _stateStream;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _stateStream = widget.syncService.watchState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SyncState>(
+      stream: _stateStream,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        return AlertDialog(
+          title: const Text('云同步'),
+          content: SizedBox(
+            width: 420,
+            child: state == null
+                ? const Text('正在读取同步状态...')
+                : _buildContent(context, state),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, SyncState state) {
+    if (state.status == SyncStateStatus.disabled) {
+      return Text(state.message ?? '当前未配置云同步，本地模式可正常使用。');
+    }
+    final isLoggedIn =
+        state.currentUserEmail != null &&
+        state.status != SyncStateStatus.unauthenticated;
+    if (!isLoggedIn) {
+      return _buildLoginContent(state);
+    }
+    return _buildLoggedInContent(state);
+  }
+
+  Widget _buildLoginContent(SyncState state) {
+    final isBusy = state.status == SyncStateStatus.syncing;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(state.message ?? '云同步未登录'),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _emailController,
+          enabled: !isBusy,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: '邮箱'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _passwordController,
+          enabled: !isBusy,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: '密码'),
+          onSubmitted: (_) => _signIn(),
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton(
+            onPressed: isBusy ? null : _signIn,
+            child: Text(isBusy ? '登录中...' : '登录'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoggedInContent(SyncState state) {
+    final isBusy = state.status == SyncStateStatus.syncing;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('已登录：${state.currentUserEmail}'),
+        const SizedBox(height: 10),
+        Text('同步状态：${_syncStatusText(state)}'),
+        if (state.lastSyncedAt != null) ...[
+          const SizedBox(height: 6),
+          Text('上次同步：${_formatSyncTime(state.lastSyncedAt!)}'),
+        ],
+        if (state.message != null) ...[
+          const SizedBox(height: 6),
+          Text(state.message!),
+        ],
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            OutlinedButton(
+              onPressed: isBusy ? null : widget.syncService.signOut,
+              child: const Text('退出登录'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: isBusy ? null : widget.syncService.syncNow,
+              icon: const Icon(Icons.sync),
+              label: Text(isBusy ? '同步中...' : '立即同步'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      return;
+    }
+    await widget.syncService.signIn(email: email, password: password);
+    _passwordController.clear();
+  }
+
+  String _syncStatusText(SyncState state) {
+    return switch (state.status) {
+      SyncStateStatus.disabled => '未配置',
+      SyncStateStatus.unauthenticated => '未登录',
+      SyncStateStatus.idle => '空闲',
+      SyncStateStatus.syncing => '同步中',
+      SyncStateStatus.success => '同步成功',
+      SyncStateStatus.failed => '同步失败',
+    };
+  }
+
+  String _formatSyncTime(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 }
 
 Future<void> _showRecurringEventDialog(
