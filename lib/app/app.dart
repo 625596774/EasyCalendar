@@ -10,6 +10,7 @@ import '../services/json_import_export_service.dart';
 import '../services/lunar_calendar_service.dart';
 import '../services/official_holiday_service.dart';
 import '../services/recurring_event_service.dart';
+import '../services/todo_completion_sound_service.dart';
 import 'app_scope.dart';
 import 'theme/app_theme.dart';
 
@@ -35,7 +36,10 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
     final festivalService = FestivalService(lunarService);
     final officialHolidayService = OfficialHolidayService();
     final recurringEventService = RecurringEventService(lunarService);
-    final importExportService = JsonImportExportService(recurringEventRepository);
+    final importExportService = JsonImportExportService(
+      recurringEventRepository,
+    );
+    const todoCompletionSoundService = TodoCompletionSoundService();
     _controller = CalendarController(
       todoRepository,
       recurringEventRepository,
@@ -44,6 +48,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       officialHolidayService,
       recurringEventService,
       importExportService,
+      todoCompletionSoundService,
     );
     _initialization = _controller.initialize();
   }
@@ -60,9 +65,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
           future: _initialization,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
-              return const Scaffold(
-                body: Center(child: Text('正在打开日历...')),
-              );
+              return const Scaffold(body: Center(child: Text('正在打开日历...')));
             }
             if (snapshot.hasError) {
               return Scaffold(

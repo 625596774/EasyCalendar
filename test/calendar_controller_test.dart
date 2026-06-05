@@ -9,18 +9,22 @@ import 'package:zrk_calendar/services/json_import_export_service.dart';
 import 'package:zrk_calendar/services/lunar_calendar_service.dart';
 import 'package:zrk_calendar/services/official_holiday_service.dart';
 import 'package:zrk_calendar/services/recurring_event_service.dart';
+import 'package:zrk_calendar/services/todo_completion_sound_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late AppDatabase database;
+  late TodoRepository todoRepository;
   late CalendarController controller;
+  late _FakeTodoCompletionSoundService todoCompletionSoundService;
 
   setUp(() async {
     database = AppDatabase(NativeDatabase.memory());
-    final todoRepository = TodoRepository(database);
+    todoRepository = TodoRepository(database);
     final recurringEventRepository = RecurringEventRepository(database);
     final lunarService = LunarCalendarService();
+    todoCompletionSoundService = _FakeTodoCompletionSoundService();
     controller = CalendarController(
       todoRepository,
       recurringEventRepository,
@@ -29,6 +33,7 @@ void main() {
       OfficialHolidayService(),
       RecurringEventService(lunarService),
       JsonImportExportService(recurringEventRepository),
+      todoCompletionSoundService,
     );
     await controller.initialize();
   });
@@ -85,4 +90,26 @@ void main() {
       OfficialHolidayStatus.adjustedWorkday,
     );
   });
+
+  test('完成待办时播放提示音，取消完成不播放', () async {
+    final date = controller.selectedDate;
+    await todoRepository.addTodo(title: '泡一杯茶', date: date);
+    final todo = (await todoRepository.getTodosForDate(date)).single;
+
+    await controller.updateTodo(todo, isCompleted: true);
+    expect(todoCompletionSoundService.playCount, 1);
+
+    final completedTodo = (await todoRepository.getTodosForDate(date)).single;
+    await controller.updateTodo(completedTodo, isCompleted: false);
+    expect(todoCompletionSoundService.playCount, 1);
+  });
+}
+
+class _FakeTodoCompletionSoundService extends TodoCompletionSoundService {
+  int playCount = 0;
+
+  @override
+  void playCompleted() {
+    playCount += 1;
+  }
 }

@@ -13,6 +13,7 @@ import '../../../services/json_import_export_service.dart';
 import '../../../services/lunar_calendar_service.dart';
 import '../../../services/official_holiday_service.dart';
 import '../../../services/recurring_event_service.dart';
+import '../../../services/todo_completion_sound_service.dart';
 import '../../../shared/utils/date_utils.dart';
 import '../domain/calendar_day.dart';
 
@@ -25,6 +26,7 @@ class CalendarController extends ChangeNotifier {
     this._officialHolidayService,
     this._recurringEventService,
     this._jsonImportExportService,
+    this._todoCompletionSoundService,
   ) {
     _selectedDate = dateOnly(DateTime.now());
     _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
@@ -37,6 +39,7 @@ class CalendarController extends ChangeNotifier {
   final OfficialHolidayService _officialHolidayService;
   final RecurringEventService _recurringEventService;
   final JsonImportExportService _jsonImportExportService;
+  final TodoCompletionSoundService _todoCompletionSoundService;
 
   late DateTime _visibleMonth;
   late DateTime _selectedDate;
@@ -186,12 +189,16 @@ class CalendarController extends ChangeNotifier {
     bool? isCompleted,
     String? note,
   }) async {
+    final shouldPlayCompletionSound = !todo.isCompleted && isCompleted == true;
     await _todoRepository.updateTodo(
       id: todo.id,
       title: title,
       isCompleted: isCompleted,
       note: note,
     );
+    if (shouldPlayCompletionSound) {
+      _todoCompletionSoundService.playCompleted();
+    }
   }
 
   Future<void> deleteTodo(TodoItem todo) => _todoRepository.deleteTodo(todo.id);
