@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -153,12 +154,14 @@ class SupabaseSyncService implements SyncService {
           currentUserEmail: user.email,
         ),
       );
-    } on Object {
+    } on Object catch (error) {
       await _markPendingRecordsFailed();
       _emit(
         SyncState(
           status: SyncStateStatus.failed,
-          message: '同步失败，本地数据已保留，可稍后重试。',
+          message:
+              '同步失败：${safeSyncErrorDetails(error)}。'
+              '本地数据已保留，可稍后重试。',
           lastSyncedAt: _state.lastSyncedAt,
           currentUserEmail: user.email,
         ),
@@ -174,6 +177,7 @@ class SupabaseSyncService implements SyncService {
   }
 
   Future<void> _syncTodos(String userId, DateTime syncedAt) async {
+    await _todoRepository.repairEmptyPendingTodoTitlesForSync();
     final pending = await _todoRepository.getPendingTodosIncludingDeleted();
     for (final todo in pending) {
       final record = TodoSyncRecord.fromTodoItem(todo);
@@ -361,4 +365,56 @@ class SupabaseSyncService implements SyncService {
       _controller.add(state);
     }
   }
+}
+
+String safeSyncErrorDetails(Object error) {
+  if (error is PostgrestException) {
+    return _joinErrorParts([
+      'PostgrestException',
+      error.code,
+      _safeErrorText(error.message),
+    ]);
+  }
+  if (error is AuthException) {
+    return _joinErrorParts(['AuthException', _safeErrorText(error.message)]);
+  }
+  if (error is SocketException) {
+    return _joinErrorParts(['SocketException', _safeErrorText(error.message)]);
+  }
+  if (error is FormatException) {
+    return _joinErrorParts(['FormatException', _safeErrorText(error.message)]);
+  }
+  return _safeErrorText(error.runtimeType.toString()) ?? 'unknown';
+}
+
+String _joinErrorParts(Iterable<Object?> parts) {
+  return parts
+      .map((part) => _safeErrorText(part))
+      .whereType<String>()
+      .where((part) => part.isNotEmpty)
+      .join(' / ');
+}
+
+String? _safeErrorText(Object? value) {
+  final raw = value?.toString().trim();
+  if (raw == null || raw.isEmpty) {
+    return null;
+  }
+  var text = raw
+      .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
+      .replaceAll(RegExp(r'https?://\S+'), '[url]')
+      .replaceAll(RegExp(r'\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b'), '[email]')
+      .replaceAll(
+        RegExp(
+          r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+          r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b',
+        ),
+        '[id]',
+      )
+      .replaceAll(RegExp(r'\b[A-Za-z0-9_-]{32,}\b'), '[redacted]');
+  text = text.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  if (text.length <= 180) {
+    return text;
+  }
+  return '${text.substring(0, 177)}...';
 }

@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:zrk_calendar/database/app_database.dart';
 import 'package:zrk_calendar/services/sync/supabase_bootstrap.dart';
 import 'package:zrk_calendar/services/sync/sync_models.dart';
+import 'package:zrk_calendar/services/sync/supabase_sync_service.dart';
 
 void main() {
   test('本地 pending todo 能被转换为云端 payload', () {
@@ -150,5 +152,60 @@ void main() {
 
     expect(result.isConfigured, isFalse);
     expect(result.client, isNull);
+  });
+
+  test('Supabase dart define 为空时仍回退到本地模式', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'zrk_calendar_empty_define_test_',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+
+    final result = await initializeSupabaseFromDotEnv(
+      fileName: '${directory.path}/missing.env',
+      defineProvider: (_) => '  ',
+    );
+
+    expect(result.isConfigured, isFalse);
+    expect(result.client, isNull);
+  });
+
+  test('同步失败详情保留 PostgREST code 和 message', () {
+    final details = safeSyncErrorDetails(
+      const PostgrestException(
+        message: 'permission denied for table todo_items',
+        code: '42501',
+      ),
+    );
+
+    expect(
+      details,
+      'PostgrestException / 42501 / permission denied for table todo_items',
+    );
+  });
+
+  test('同步失败详情会脱敏 URL、邮箱、UUID 和长 token', () {
+    final details = safeSyncErrorDetails(
+      const PostgrestException(
+        message:
+            'request https://example.supabase.co/rest/v1/todo_items failed '
+            'for test@example.com id '
+            '11111111-1111-4111-8111-111111111111 token '
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+        code: 'PGRST301',
+      ),
+    );
+
+    expect(details, contains('PostgrestException / PGRST301'));
+    expect(details, contains('[url]'));
+    expect(details, contains('[email]'));
+    expect(details, contains('[id]'));
+    expect(details, contains('[redacted]'));
+    expect(details, isNot(contains('example.supabase.co')));
+    expect(details, isNot(contains('test@example.com')));
+    expect(details, isNot(contains('11111111-1111-4111-8111-111111111111')));
   });
 }

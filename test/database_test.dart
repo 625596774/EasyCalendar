@@ -58,6 +58,44 @@ void main() {
     expect(deleted.syncStatus, TodoRepository.pendingSyncStatus);
   });
 
+  test('待办标题不能为空，历史空标题记录会在同步前修复', () async {
+    final date = DateTime(2026, 6, 3);
+
+    expect(
+      () => todoRepository.addTodo(title: '   ', date: date),
+      throwsArgumentError,
+    );
+
+    final id = await todoRepository.addTodo(title: '有效待办', date: date);
+    expect(
+      () => todoRepository.updateTodo(id: id, title: '   '),
+      throwsArgumentError,
+    );
+
+    await database
+        .into(database.todoItems)
+        .insert(
+          TodoItemsCompanion.insert(
+            id: 'empty-title-todo',
+            title: '   ',
+            date: date,
+            createdAt: DateTime.utc(2026, 6, 3, 1),
+            updatedAt: DateTime.utc(2026, 6, 3, 2),
+            syncStatus: const Value(TodoRepository.failedSyncStatus),
+          ),
+        );
+
+    final repairedCount = await todoRepository
+        .repairEmptyPendingTodoTitlesForSync();
+    final repaired = await todoRepository.getTodoByIdIncludingDeleted(
+      'empty-title-todo',
+    );
+
+    expect(repairedCount, 1);
+    expect(repaired!.title, TodoRepository.unnamedTodoTitle);
+    expect(repaired.syncStatus, TodoRepository.pendingSyncStatus);
+  });
+
   test('生日和纪念日生成 UUID，删除为软删除并被默认查询过滤', () async {
     final id = await recurringEventRepository.addEvent(
       title: '妈妈生日',

@@ -71,6 +71,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/EasyCalendar.png
     - assets/data/holidays/
     - assets/data/festivals/
     - assets/jokebear/

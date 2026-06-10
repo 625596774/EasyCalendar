@@ -215,6 +215,10 @@ class CalendarController extends ChangeNotifier {
     bool? isCompleted,
     String? note,
   }) async {
+    if (title != null && title.trim().isEmpty) {
+      _setMessage('待办标题不能为空。');
+      return;
+    }
     final shouldPlayCompletionSound = !todo.isCompleted && isCompleted == true;
     await _todoRepository.updateTodo(
       id: todo.id,
@@ -243,6 +247,10 @@ class CalendarController extends ChangeNotifier {
     bool? isCompleted,
     String? note,
   }) async {
+    if (title != null && title.trim().isEmpty) {
+      _setMessage('待办标题不能为空。');
+      return;
+    }
     final shouldPlayCompletionSound = !todo.isCompleted && isCompleted == true;
     await _todoRepository.updateTodo(
       id: todo.id,

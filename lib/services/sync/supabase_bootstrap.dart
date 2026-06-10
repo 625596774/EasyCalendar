@@ -4,6 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+typedef SupabaseDefineProvider = String? Function(String name);
+
 class SupabaseBootstrapResult {
   const SupabaseBootstrapResult._({
     required this.isConfigured,
@@ -26,8 +28,17 @@ class SupabaseBootstrapResult {
 
 Future<SupabaseBootstrapResult> initializeSupabaseFromDotEnv({
   String fileName = '.env',
+  SupabaseDefineProvider defineProvider = _dartDefineValue,
 }) async {
   try {
+    final defineConfig = _SupabaseConfig.fromValues(
+      url: defineProvider('SUPABASE_URL'),
+      publishableKey: defineProvider('SUPABASE_PUBLISHABLE_KEY'),
+    );
+    if (defineConfig != null) {
+      return _initializeSupabase(defineConfig);
+    }
+
     final envFile = await _findDotEnvFile(fileName);
     if (envFile == null) {
       return SupabaseBootstrapResult.disabled('当前未配置云同步，本地模式可正常使用。');
@@ -36,17 +47,28 @@ Future<SupabaseBootstrapResult> initializeSupabaseFromDotEnv({
     final raw = await envFile.readAsString();
     dotenv.loadFromString(envString: raw, isOptional: true);
 
-    final url = dotenv.maybeGet('SUPABASE_URL')?.trim();
-    final key = dotenv.maybeGet('SUPABASE_PUBLISHABLE_KEY')?.trim();
-    if (!_looksLikeSupabaseUrl(url) || key == null || key.isEmpty) {
+    final envConfig = _SupabaseConfig.fromValues(
+      url: dotenv.maybeGet('SUPABASE_URL'),
+      publishableKey: dotenv.maybeGet('SUPABASE_PUBLISHABLE_KEY'),
+    );
+    if (envConfig == null) {
       return SupabaseBootstrapResult.disabled('Supabase 配置不完整，本地模式可正常使用。');
     }
 
-    await Supabase.initialize(url: url!, publishableKey: key);
-    return SupabaseBootstrapResult.configured(Supabase.instance.client);
+    return _initializeSupabase(envConfig);
   } on Object {
     return SupabaseBootstrapResult.disabled('Supabase 初始化失败，本地模式可正常使用。');
   }
+}
+
+Future<SupabaseBootstrapResult> _initializeSupabase(
+  _SupabaseConfig config,
+) async {
+  await Supabase.initialize(
+    url: config.url,
+    publishableKey: config.publishableKey,
+  );
+  return SupabaseBootstrapResult.configured(Supabase.instance.client);
 }
 
 Future<File?> _findDotEnvFile(String fileName) async {
@@ -95,4 +117,37 @@ bool _looksLikeSupabaseUrl(String? value) {
     return false;
   }
   return !uri.path.contains('/rest/v1');
+}
+
+String? _dartDefineValue(String name) {
+  final value = switch (name) {
+    'SUPABASE_URL' => const String.fromEnvironment('SUPABASE_URL'),
+    'SUPABASE_PUBLISHABLE_KEY' => const String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+    ),
+    _ => '',
+  };
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+class _SupabaseConfig {
+  const _SupabaseConfig({required this.url, required this.publishableKey});
+
+  final String url;
+  final String publishableKey;
+
+  static _SupabaseConfig? fromValues({
+    required String? url,
+    required String? publishableKey,
+  }) {
+    final normalizedUrl = url?.trim();
+    final normalizedKey = publishableKey?.trim();
+    if (!_looksLikeSupabaseUrl(normalizedUrl) ||
+        normalizedKey == null ||
+        normalizedKey.isEmpty) {
+      return null;
+    }
+    return _SupabaseConfig(url: normalizedUrl!, publishableKey: normalizedKey);
+  }
 }

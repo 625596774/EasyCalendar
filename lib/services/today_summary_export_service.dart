@@ -44,6 +44,8 @@ class TodaySummaryExportService {
 
   final DailySummaryService _dailySummaryService;
   final TodaySummaryDirectoryProvider _directoryProvider;
+  Future<void> _exportQueue = Future.value();
+  int _tempFileSequence = 0;
 
   Future<TodaySummaryExportResult> exportToday({DateTime? now}) async {
     try {
@@ -59,21 +61,45 @@ class TodaySummaryExportService {
   Future<TodaySummaryExportResult> exportSummary(
     DailySummary summary, {
     String outputFileName = fileName,
+  }) {
+    final exportTask = _exportQueue.then(
+      (_) => _writeSummary(summary, outputFileName: outputFileName),
+    );
+    _exportQueue = exportTask.then<void>((_) {}, onError: (_) {});
+    return exportTask;
+  }
+
+  Future<TodaySummaryExportResult> _writeSummary(
+    DailySummary summary, {
+    required String outputFileName,
   }) async {
     try {
       final directory = await _directoryProvider();
       await directory.create(recursive: true);
       final file = File(p.join(directory.path, outputFileName));
-      final tempFile = File('${file.path}.tmp');
+      await file.parent.create(recursive: true);
+      final tempFile = File(
+        '${file.path}.${DateTime.now().microsecondsSinceEpoch}.'
+        '${_tempFileSequence++}.tmp',
+      );
+      await tempFile.parent.create(recursive: true);
       final payload = const JsonEncoder.withIndent(
         '  ',
       ).convert(summary.toJson());
 
-      await tempFile.writeAsString('$payload\n');
-      if (await file.exists()) {
-        await file.delete();
+      await tempFile.writeAsString('$payload\n', flush: true);
+      try {
+        if (await file.exists()) {
+          await file.delete();
+        }
+        await tempFile.rename(file.path);
+      } on FileSystemException {
+        await file.parent.create(recursive: true);
+        await file.writeAsString('$payload\n', flush: true);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
       }
-      await tempFile.rename(file.path);
       return TodaySummaryExportResult.success(file.path);
     } on Object catch (error) {
       return TodaySummaryExportResult.failure(_safeError(error));

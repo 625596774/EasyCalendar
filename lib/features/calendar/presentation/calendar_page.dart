@@ -12,8 +12,16 @@ import '../domain/daily_summary.dart';
 
 const _jokeBearAssetCount = 193;
 const _jokeBearAssetDirectory = 'assets/jokebear';
+const _mobileBreakpoint = 700.0;
+const _monthSwipeDistanceThreshold = 56.0;
+const _monthSwipeVelocityThreshold = 320.0;
+const _monthSwitchAnimationDuration = Duration(milliseconds: 240);
 
 enum _CalendarViewMode { month, compact }
+
+enum _MobileMonthAction { previous, today, next }
+
+enum _MobileMoreAction { recurringEvents, importExport }
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -40,25 +48,291 @@ class _CalendarPageState extends State<CalendarPage> {
     }
 
     return Scaffold(
-      body: Column(
-        children: [
-          _CalendarToolbar(
-            controller: controller,
-            viewMode: _viewMode,
-            onViewModeChanged: (mode) => setState(() => _viewMode = mode),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: _viewMode == _CalendarViewMode.month
-                ? _MonthCalendarView(controller: controller)
-                : _CompactCalendarView(
-                    controller: controller,
-                    onShowMonthView: () =>
-                        setState(() => _viewMode = _CalendarViewMode.month),
-                  ),
-          ),
-        ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isMobile = constraints.maxWidth < _mobileBreakpoint;
+          final content = Column(
+            children: [
+              if (isMobile)
+                _MobileCalendarToolbar(controller: controller)
+              else
+                _CalendarToolbar(
+                  controller: controller,
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                ),
+              const Divider(height: 1),
+              Expanded(
+                child: isMobile
+                    ? _MobileMonthSwipeArea(
+                        controller: controller,
+                        child: _MonthCalendarView(controller: controller),
+                      )
+                    : _viewMode == _CalendarViewMode.month
+                    ? _MonthCalendarView(controller: controller)
+                    : _CompactCalendarView(
+                        controller: controller,
+                        onShowMonthView: () =>
+                            setState(() => _viewMode = _CalendarViewMode.month),
+                      ),
+              ),
+            ],
+          );
+
+          if (!isMobile) {
+            return content;
+          }
+
+          return SafeArea(child: content);
+        },
       ),
+    );
+  }
+}
+
+class _MobileMonthSwipeArea extends StatefulWidget {
+  const _MobileMonthSwipeArea({required this.controller, required this.child});
+
+  final CalendarController controller;
+  final Widget child;
+
+  @override
+  State<_MobileMonthSwipeArea> createState() => _MobileMonthSwipeAreaState();
+}
+
+class _MobileMonthSwipeAreaState extends State<_MobileMonthSwipeArea> {
+  double _dragDistance = 0;
+  int _pendingTransitionDirection = 0;
+  int _transitionDirection = 1;
+  DateTime? _lastVisibleMonth;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleMonth = widget.controller.visibleMonth;
+    _updateTransitionDirection(visibleMonth);
+    final monthKey = ValueKey(
+      '${visibleMonth.year}-${visibleMonth.month.toString().padLeft(2, '0')}',
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (_) => _dragDistance = 0,
+      onHorizontalDragUpdate: (details) {
+        _dragDistance += details.primaryDelta ?? 0;
+      },
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        final hasEnoughDistance =
+            _dragDistance.abs() >= _monthSwipeDistanceThreshold;
+        final hasEnoughVelocity =
+            velocity.abs() >= _monthSwipeVelocityThreshold;
+        if (!hasEnoughDistance && !hasEnoughVelocity) {
+          return;
+        }
+
+        if (velocity < -_monthSwipeVelocityThreshold ||
+            _dragDistance < -_monthSwipeDistanceThreshold) {
+          _pendingTransitionDirection = 1;
+          widget.controller.nextMonth();
+        } else if (velocity > _monthSwipeVelocityThreshold ||
+            _dragDistance > _monthSwipeDistanceThreshold) {
+          _pendingTransitionDirection = -1;
+          widget.controller.previousMonth();
+        }
+      },
+      child: ClipRect(
+        child: AnimatedSwitcher(
+          duration: _monthSwitchAnimationDuration,
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (currentChild, previousChildren) {
+            return Stack(
+              fit: StackFit.expand,
+              children: [...previousChildren, ?currentChild],
+            );
+          },
+          transitionBuilder: (child, animation) {
+            final isIncoming = child.key == monthKey;
+            final direction = _transitionDirection.toDouble();
+            final begin = Offset(isIncoming ? direction : -direction, 0);
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: begin,
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: KeyedSubtree(key: monthKey, child: widget.child),
+        ),
+      ),
+    );
+  }
+
+  void _updateTransitionDirection(DateTime visibleMonth) {
+    final previousMonth = _lastVisibleMonth;
+    if (previousMonth == null) {
+      _lastVisibleMonth = visibleMonth;
+      return;
+    }
+    if (previousMonth.year == visibleMonth.year &&
+        previousMonth.month == visibleMonth.month) {
+      return;
+    }
+
+    if (_pendingTransitionDirection != 0) {
+      _transitionDirection = _pendingTransitionDirection;
+    } else {
+      _transitionDirection =
+          _monthIndex(visibleMonth) >= _monthIndex(previousMonth) ? 1 : -1;
+    }
+    _pendingTransitionDirection = 0;
+    _lastVisibleMonth = visibleMonth;
+  }
+}
+
+int _monthIndex(DateTime date) {
+  return date.year * 12 + date.month;
+}
+
+class _MobileCalendarToolbar extends StatelessWidget {
+  const _MobileCalendarToolbar({required this.controller});
+
+  final CalendarController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = app_date.monthTitle(controller.visibleMonth);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+      child: SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            Expanded(
+              child: PopupMenuButton<_MobileMonthAction>(
+                tooltip: '月份操作',
+                onSelected: (action) => _handleMonthAction(action),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _MobileMonthAction.previous,
+                    child: _PopupMenuItemContent(
+                      icon: Icons.chevron_left,
+                      label: '上一个月',
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _MobileMonthAction.today,
+                    child: _PopupMenuItemContent(
+                      icon: Icons.today_outlined,
+                      label: '回到今天',
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _MobileMonthAction.next,
+                    child: _PopupMenuItemContent(
+                      icon: Icons.chevron_right,
+                      label: '下一个月',
+                    ),
+                  ),
+                ],
+                child: Semantics(
+                  button: true,
+                  label: '当前月份 $title',
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.arrow_drop_down, size: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '今天',
+              onPressed: controller.goToday,
+              icon: const Icon(Icons.today_outlined),
+            ),
+            IconButton(
+              tooltip: '同步',
+              onPressed: () => _showSyncDialog(context),
+              icon: const Icon(Icons.cloud_sync_outlined),
+            ),
+            PopupMenuButton<_MobileMoreAction>(
+              tooltip: '更多',
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (action) => _handleMoreAction(context, action),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _MobileMoreAction.recurringEvents,
+                  child: _PopupMenuItemContent(
+                    icon: Icons.cake_outlined,
+                    label: '生日/纪念日',
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MobileMoreAction.importExport,
+                  child: _PopupMenuItemContent(
+                    icon: Icons.import_export,
+                    label: '导入/导出',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleMonthAction(_MobileMonthAction action) {
+    switch (action) {
+      case _MobileMonthAction.previous:
+        controller.previousMonth();
+      case _MobileMonthAction.today:
+        controller.goToday();
+      case _MobileMonthAction.next:
+        controller.nextMonth();
+    }
+  }
+
+  void _handleMoreAction(BuildContext context, _MobileMoreAction action) {
+    switch (action) {
+      case _MobileMoreAction.recurringEvents:
+        _showRecurringEventManager(context, controller);
+      case _MobileMoreAction.importExport:
+        _showImportExportDialog(context, controller);
+    }
+  }
+}
+
+class _PopupMenuItemContent extends StatelessWidget {
+  const _PopupMenuItemContent({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon), const SizedBox(width: 12), Text(label)],
     );
   }
 }
@@ -222,13 +496,32 @@ class _MonthCalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showDetail = constraints.maxWidth >= 920;
+        final isMobile = constraints.maxWidth < _mobileBreakpoint;
+        final showDetail = !isMobile && constraints.maxWidth >= 920;
         return Row(
           children: [
             Expanded(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 12, showDetail ? 8 : 16, 16),
-                child: _MonthGrid(controller: controller),
+                padding: EdgeInsets.fromLTRB(
+                  isMobile ? 8 : 16,
+                  isMobile ? 8 : 12,
+                  showDetail
+                      ? 8
+                      : isMobile
+                      ? 8
+                      : 16,
+                  isMobile ? 10 : 16,
+                ),
+                child: _MonthGrid(
+                  controller: controller,
+                  isMobile: isMobile,
+                  onDateSelected: (date) {
+                    controller.selectDate(date);
+                    if (isMobile) {
+                      _showMobileDaySummarySheet(context, controller);
+                    }
+                  },
+                ),
               ),
             ),
             if (showDetail)
@@ -328,17 +621,70 @@ class _CompactDateActions extends StatelessWidget {
         TextButton.icon(
           onPressed: onShowMonthView,
           icon: const Icon(Icons.calendar_month_outlined),
-          label: const Text('回到完整日历'),
+          label: const Text('回到月历'),
         ),
       ],
     );
   }
 }
 
+Future<void> _showMobileDaySummarySheet(
+  BuildContext context,
+  CalendarController controller,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      return FractionallySizedBox(
+        heightFactor: 0.82,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1D5DB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _SelectedDateDetailContent(
+                      controller: controller,
+                      showRecurringEventAction: false,
+                      showTodoHeaderAction: true,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({required this.controller});
+  const _MonthGrid({
+    required this.controller,
+    required this.isMobile,
+    required this.onDateSelected,
+  });
 
   final CalendarController controller;
+  final bool isMobile;
+  final ValueChanged<DateTime> onDateSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -351,7 +697,7 @@ class _MonthGrid extends StatelessWidget {
               .map(
                 (day) => Expanded(
                   child: Container(
-                    height: 32,
+                    height: isMobile ? 28 : 32,
                     alignment: Alignment.center,
                     child: Text(
                       day,
@@ -365,8 +711,8 @@ class _MonthGrid extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const mainAxisSpacing = 6.0;
-              const crossAxisSpacing = 6.0;
+              final mainAxisSpacing = isMobile ? 3.0 : 6.0;
+              final crossAxisSpacing = isMobile ? 3.0 : 6.0;
               final rowCount = days.length ~/ 7;
               final cellWidth =
                   (constraints.maxWidth - crossAxisSpacing * 6) / 7;
@@ -390,7 +736,8 @@ class _MonthGrid extends StatelessWidget {
                   return _CalendarDayCell(
                     key: ValueKey(app_date.dateKey(days[index].date)),
                     day: days[index],
-                    onTap: () => controller.selectDate(days[index].date),
+                    isMobile: isMobile,
+                    onTap: () => onDateSelected(days[index].date),
                   );
                 },
               );
@@ -403,9 +750,15 @@ class _MonthGrid extends StatelessWidget {
 }
 
 class _CalendarDayCell extends StatelessWidget {
-  const _CalendarDayCell({super.key, required this.day, required this.onTap});
+  const _CalendarDayCell({
+    super.key,
+    required this.day,
+    required this.isMobile,
+    required this.onTap,
+  });
 
   final CalendarDay day;
+  final bool isMobile;
   final VoidCallback onTap;
 
   @override
@@ -447,6 +800,13 @@ class _CalendarDayCell extends StatelessWidget {
           builder: (context, constraints) {
             final compact =
                 constraints.maxHeight < 96 || constraints.maxWidth < 104;
+            if (isMobile) {
+              return _MobileCalendarDayCellContent(
+                day: day,
+                textColor: textColor,
+                muted: muted,
+              );
+            }
             if (compact) {
               return Padding(
                 padding: const EdgeInsets.all(4),
@@ -584,6 +944,294 @@ class _CalendarDayCell extends StatelessWidget {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileCalendarDayCellContent extends StatelessWidget {
+  const _MobileCalendarDayCellContent({
+    required this.day,
+    required this.textColor,
+    required this.muted,
+  });
+
+  final CalendarDay day;
+  final Color textColor;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final metaLabel = _mobileDayMetaLabel(day);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showMetaLabel = constraints.maxHeight >= 48;
+          final showMarkers =
+              constraints.maxHeight >= 58 && _hasMobileDayMarkers(day);
+          final visibleTodoCount = _visibleMobileTodoCount(
+            cellHeight: constraints.maxHeight,
+            showMetaLabel: showMetaLabel,
+            showMarkers: showMarkers,
+            totalTodos: day.todos.length,
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              if (day.isCurrentMonth)
+                Positioned(
+                  right: -2,
+                  bottom: 12,
+                  child: IgnorePointer(
+                    child: _JokeBearImage(
+                      assetPath: _jokeBearAssetForDate(day.date),
+                      size: _mobileJokeBearSize(constraints),
+                      opacity: _mobileJokeBearOpacity(day),
+                      cacheWidth: 120,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${day.date.day}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.05,
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (!showMarkers &&
+                            day.officialHoliday != null &&
+                            constraints.maxWidth > 46)
+                          _TinyBadge(
+                            text: day.officialHoliday!.status.label,
+                            isWorkday:
+                                day.officialHoliday!.status.value ==
+                                'adjustedWorkday',
+                          ),
+                      ],
+                    ),
+                    if (showMetaLabel) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        metaLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          height: 1.1,
+                          color: muted
+                              ? const Color(0xFF9AA1A8)
+                              : const Color(0xFF4B5563),
+                        ),
+                      ),
+                    ],
+                    if (visibleTodoCount > 0) const SizedBox(height: 2),
+                    ...day.todos
+                        .take(visibleTodoCount)
+                        .map(
+                          (todo) => Text(
+                            todo.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1.12,
+                              color: muted
+                                  ? const Color(0xFF9AA1A8)
+                                  : todo.isCompleted
+                                  ? const Color(0xFF9AA1A8)
+                                  : const Color(0xFF374151),
+                              decoration: todo.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                    const Spacer(),
+                    if (showMarkers) _MobileDayMarkers(day: day),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+double _mobileJokeBearSize(BoxConstraints constraints) {
+  final shortestSide = constraints.maxWidth < constraints.maxHeight
+      ? constraints.maxWidth
+      : constraints.maxHeight;
+  if (shortestSide < 56) {
+    return 34;
+  }
+  if (shortestSide < 74) {
+    return 42;
+  }
+  return 50;
+}
+
+double _mobileJokeBearOpacity(CalendarDay day) {
+  if (!day.isCurrentMonth) {
+    return 0;
+  }
+  if (day.todos.isNotEmpty) {
+    return day.isSelected ? 0.08 : 0.055;
+  }
+  return day.isSelected ? 0.1 : 0.075;
+}
+
+int _visibleMobileTodoCount({
+  required double cellHeight,
+  required bool showMetaLabel,
+  required bool showMarkers,
+  required int totalTodos,
+}) {
+  if (totalTodos <= 0 || cellHeight < 62) {
+    return 0;
+  }
+
+  const paddingHeight = 8.0;
+  const dateRowHeight = 16.0;
+  const metaHeight = 14.0;
+  const todoGapHeight = 2.0;
+  const todoLineHeight = 12.0;
+  const markerHeight = 12.0;
+  var usedHeight = paddingHeight + dateRowHeight;
+  if (showMetaLabel) {
+    usedHeight += metaHeight;
+  }
+  if (showMarkers) {
+    usedHeight += markerHeight;
+  }
+
+  final availableRows =
+      ((cellHeight - usedHeight - todoGapHeight) / todoLineHeight).floor();
+  if (availableRows <= 0) {
+    return 0;
+  }
+  return totalTodos < availableRows ? totalTodos : availableRows;
+}
+
+String _mobileDayMetaLabel(CalendarDay day) {
+  if (day.festivals.isNotEmpty) {
+    return day.festivals.first;
+  }
+  if (day.recurringEvents.isNotEmpty) {
+    return day.recurringEvents.first.title;
+  }
+  return day.lunarInfo.day == 1
+      ? '${day.lunarInfo.monthText}月'
+      : day.lunarInfo.dayText;
+}
+
+class _MobileDayMarkers extends StatelessWidget {
+  const _MobileDayMarkers({required this.day});
+
+  final CalendarDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final markers = <Widget>[
+      if (day.recurringEvents.isNotEmpty)
+        const _MobileDayDotMarker(
+          color: Color(0xFFDC2626),
+          semanticLabel: '有生日或纪念日',
+        ),
+      if (day.todos.isNotEmpty)
+        const _MobileDayDotMarker(
+          color: Color(0xFF2563EB),
+          semanticLabel: '有待办',
+        ),
+      if (day.officialHoliday != null)
+        _MobileDayHolidayMarker(
+          text: day.officialHoliday!.status.label,
+          isWorkday: day.officialHoliday!.status.value == 'adjustedWorkday',
+        ),
+    ].take(3).toList(growable: false);
+    if (markers.isEmpty) {
+      return const SizedBox(height: 12);
+    }
+    return SizedBox(
+      height: 12,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: markers,
+      ),
+    );
+  }
+}
+
+bool _hasMobileDayMarkers(CalendarDay day) {
+  return day.todos.isNotEmpty ||
+      day.recurringEvents.isNotEmpty ||
+      day.officialHoliday != null;
+}
+
+class _MobileDayDotMarker extends StatelessWidget {
+  const _MobileDayDotMarker({required this.color, required this.semanticLabel});
+
+  final Color color;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: semanticLabel,
+      child: Container(
+        width: 5,
+        height: 5,
+        margin: const EdgeInsets.only(right: 3),
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+class _MobileDayHolidayMarker extends StatelessWidget {
+  const _MobileDayHolidayMarker({required this.text, required this.isWorkday});
+
+  final String text;
+  final bool isWorkday;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: isWorkday ? '调休上班日' : '官方休息日',
+      child: Container(
+        height: 12,
+        constraints: const BoxConstraints(minWidth: 14),
+        margin: const EdgeInsets.only(right: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isWorkday ? const Color(0xFFE5E7EB) : const Color(0xFFE7F3EA),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 9,
+            height: 1,
+            fontWeight: FontWeight.w700,
+            color: isWorkday
+                ? const Color(0xFF6B7280)
+                : const Color(0xFF2B6B3F),
+          ),
         ),
       ),
     );
@@ -946,6 +1594,12 @@ Future<void> _showTodoDialog(
           ),
           FilledButton(
             onPressed: () async {
+              if (titleController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('待办标题不能为空。')));
+                return;
+              }
               if (isEditing) {
                 await controller.updateSummaryTodo(
                   todo,

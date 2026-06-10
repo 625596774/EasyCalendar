@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <glib.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -14,6 +15,25 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+static void set_window_icon(GtkWindow* window) {
+  g_autofree gchar* executable_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (executable_path != nullptr) {
+    g_autofree gchar* executable_dir = g_path_get_dirname(executable_path);
+    g_autofree gchar* bundled_icon_path =
+        g_build_filename(executable_dir, "data", "flutter_assets", "assets",
+                         "EasyCalendar.png", nullptr);
+    if (g_file_test(bundled_icon_path, G_FILE_TEST_EXISTS)) {
+      gtk_window_set_icon_from_file(window, bundled_icon_path, nullptr);
+      return;
+    }
+  }
+
+  const gchar* source_icon_path = "assets/EasyCalendar.png";
+  if (g_file_test(source_icon_path, G_FILE_TEST_EXISTS)) {
+    gtk_window_set_icon_from_file(window, source_icon_path, nullptr);
+  }
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -24,6 +44,7 @@ static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  set_window_icon(window);
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu

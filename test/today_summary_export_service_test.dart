@@ -65,6 +65,25 @@ void main() {
     expect(await File(result.path!).exists(), isTrue);
   });
 
+  test('写入前会创建目标文件的父目录', () async {
+    final result = await service.exportSummary(
+      summary,
+      outputFileName: 'nested/today_summary.json',
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(await File(result.path!).exists(), isTrue);
+  });
+
+  test('并发导出不会互相抢占临时文件', () async {
+    final results = await Future.wait([
+      for (var index = 0; index < 8; index++) service.exportSummary(summary),
+    ]);
+
+    expect(results.every((result) => result.isSuccess), isTrue);
+    expect(await File(results.last.path!).exists(), isTrue);
+  });
+
   test('导出的 JSON 不包含内部同步和用户身份字段', () async {
     final result = await service.exportSummary(summary);
     final raw = await File(result.path!).readAsString();

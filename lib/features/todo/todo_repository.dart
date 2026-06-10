@@ -11,6 +11,7 @@ class TodoRepository {
   static const pendingSyncStatus = SyncRecordStatus.pending;
   static const syncedSyncStatus = SyncRecordStatus.synced;
   static const failedSyncStatus = SyncRecordStatus.failed;
+  static const unnamedTodoTitle = '未命名待办';
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -77,6 +78,10 @@ class TodoRepository {
     required DateTime date,
     String? note,
   }) async {
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty) {
+      throw ArgumentError.value(title, 'title', '待办标题不能为空。');
+    }
     final id = _uuid.v4();
     final now = DateTime.now().toUtc();
     await _database
@@ -84,7 +89,7 @@ class TodoRepository {
         .insert(
           TodoItemsCompanion.insert(
             id: id,
-            title: title.trim(),
+            title: normalizedTitle,
             date: dateOnly(date),
             note: Value(note?.trim().isEmpty ?? true ? null : note!.trim()),
             createdAt: now,
@@ -101,11 +106,17 @@ class TodoRepository {
     bool? isCompleted,
     String? note,
   }) {
+    final normalizedTitle = title?.trim();
+    if (normalizedTitle != null && normalizedTitle.isEmpty) {
+      throw ArgumentError.value(title, 'title', '待办标题不能为空。');
+    }
     return (_database.update(
       _database.todoItems,
     )..where((row) => row.id.equals(id))).write(
       TodoItemsCompanion(
-        title: title == null ? const Value.absent() : Value(title.trim()),
+        title: normalizedTitle == null
+            ? const Value.absent()
+            : Value(normalizedTitle),
         isCompleted: isCompleted == null
             ? const Value.absent()
             : Value(isCompleted),
@@ -187,5 +198,23 @@ class TodoRepository {
     return (_database.update(_database.todoItems)
           ..where((row) => row.id.equals(id)))
         .write(const TodoItemsCompanion(syncStatus: Value(failedSyncStatus)));
+  }
+
+  Future<int> repairEmptyPendingTodoTitlesForSync() async {
+    final pendingTodos = await getPendingTodosIncludingDeleted();
+    final invalidTodos = pendingTodos
+        .where((todo) => todo.title.trim().isEmpty)
+        .toList(growable: false);
+    for (final todo in invalidTodos) {
+      await (_database.update(
+        _database.todoItems,
+      )..where((row) => row.id.equals(todo.id))).write(
+        const TodoItemsCompanion(
+          title: Value(unnamedTodoTitle),
+          syncStatus: Value(pendingSyncStatus),
+        ),
+      );
+    }
+    return invalidTodos.length;
   }
 }
