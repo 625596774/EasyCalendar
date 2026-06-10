@@ -23,12 +23,7 @@ class NoopSyncService implements SyncService {
 
   @override
   Future<void> initialize() async {
-    _emit(
-      const SyncState(
-        status: SyncStateStatus.disabled,
-        message: '当前版本仅使用本地数据库。',
-      ),
-    );
+    _emit(_state);
   }
 
   @override

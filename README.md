@@ -1,6 +1,6 @@
 # zrk_calendar
 
-一个用 Flutter + Drift 打造的个人日历。它面向 Ubuntu Linux 桌面端，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都会保存在本机 SQLite 数据库中；如果配置 Supabase，也可以使用邮箱密码登录后手动云同步。
+一个用 Flutter + Drift 打造的个人日历。它面向 Ubuntu Linux 和 macOS 桌面端，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都会保存在本机 SQLite 数据库中；如果配置 Supabase，也可以使用邮箱密码登录后手动云同步。
 
 适合想要一个“轻一点、私有一点、能看农历和调休”的个人桌面日历的人。当前版本是第一版可运行实现，重点放在本地持久化、月视图、待办、生日纪念日规则和 JSON 导入导出。
 
@@ -17,6 +17,8 @@
 
 ## 运行
 
+Linux：
+
 ```bash
 flutter pub get
 flutter run -d linux
@@ -30,12 +32,31 @@ LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11 \
 flutter build linux
 ```
 
+macOS：
+
+```bash
+flutter config --enable-macos-desktop
+flutter doctor -v
+flutter pub get
+flutter run -d macos
+```
+
+macOS 需要安装完整 Xcode，而不只是 Command Line Tools。安装后通常还需要执行：
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
+```
+
+如果 `flutter doctor -v` 提示 CocoaPods 缺失，需要先安装 CocoaPods，否则带平台代码的插件可能无法在 macOS/iOS 工程中正确集成。
+
 ## 验证
 
 ```bash
 flutter analyze
 flutter test
 flutter build linux
+flutter build macos
 ```
 
 ## 关键目录
@@ -109,7 +130,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
 ```
 
-`SUPABASE_URL` 不要包含 `/rest/v1/`。当前桌面版会先从运行目录读取 `.env`，如果没找到，会从应用可执行文件所在目录向上查找父目录；开发时通常放在项目根目录即可。发布后如果需要云同步，也可以把同样格式的 `.env` 放在可执行文件旁边。
+`SUPABASE_URL` 不要包含 `/rest/v1/`。当前桌面版会先从运行目录读取 `.env`，如果没找到，会从应用可执行文件所在目录向上查找父目录；开发时通常放在项目根目录即可，Linux 和 macOS 都使用同样规则。发布后如果需要云同步，也可以把同样格式的 `.env` 放在可执行文件旁边。
+
+macOS 版本启用了 App Sandbox，并在 entitlements 中允许出站网络访问和用户选择文件读写。出站网络用于 Supabase 登录和同步，用户选择文件读写用于 JSON 导入导出。
 
 Supabase 云端表需要开启 RLS，并确保用户只能读写自己的数据。云端表结构：
 

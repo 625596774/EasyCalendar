@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseBootstrapResult {
@@ -62,10 +63,15 @@ Future<File?> _findDotEnvFile(String fileName) async {
     Directory.current,
     File(Platform.resolvedExecutable).parent,
   ];
+  try {
+    startDirectories.add(await getApplicationSupportDirectory());
+  } on Object {
+    // Some test environments do not have a platform path provider.
+  }
 
   for (final start in startDirectories) {
     var directory = start;
-    for (var depth = 0; depth < 8; depth++) {
+    for (var depth = 0; depth < 12; depth++) {
       final candidate = File('${directory.path}/$fileName');
       if (searched.add(candidate.path) && await candidate.exists()) {
         return candidate;
