@@ -12,6 +12,8 @@ import '../domain/calendar_day.dart';
 const _jokeBearAssetCount = 193;
 const _jokeBearAssetDirectory = 'assets/jokebear';
 
+enum _CalendarViewMode { month, compact }
+
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
@@ -20,6 +22,8 @@ class CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<CalendarPage> {
+  var _viewMode = _CalendarViewMode.month;
+
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
@@ -37,37 +41,20 @@ class _CalendarPageState extends State<CalendarPage> {
     return Scaffold(
       body: Column(
         children: [
-          _CalendarToolbar(controller: controller),
+          _CalendarToolbar(
+            controller: controller,
+            viewMode: _viewMode,
+            onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+          ),
           const Divider(height: 1),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final showDetail = constraints.maxWidth >= 920;
-                return Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          12,
-                          showDetail ? 8 : 16,
-                          16,
-                        ),
-                        child: _MonthGrid(controller: controller),
-                      ),
-                    ),
-                    if (showDetail)
-                      SizedBox(
-                        width: 360,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 12, 16, 16),
-                          child: _DayDetailPanel(controller: controller),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
+            child: _viewMode == _CalendarViewMode.month
+                ? _MonthCalendarView(controller: controller)
+                : _CompactCalendarView(
+                    controller: controller,
+                    onShowMonthView: () =>
+                        setState(() => _viewMode = _CalendarViewMode.month),
+                  ),
           ),
         ],
       ),
@@ -76,59 +63,273 @@ class _CalendarPageState extends State<CalendarPage> {
 }
 
 class _CalendarToolbar extends StatelessWidget {
-  const _CalendarToolbar({required this.controller});
+  const _CalendarToolbar({
+    required this.controller,
+    required this.viewMode,
+    required this.onViewModeChanged,
+  });
 
   final CalendarController controller;
+  final _CalendarViewMode viewMode;
+  final ValueChanged<_CalendarViewMode> onViewModeChanged;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: '上一个月',
-            onPressed: controller.previousMonth,
-            icon: const Icon(Icons.chevron_left),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 1040;
+          if (compact) {
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ..._dateControls(context, compact: true),
+                _CalendarViewSwitcher(
+                  viewMode: viewMode,
+                  onChanged: onViewModeChanged,
+                ),
+                ..._globalActions(context),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              ..._dateControls(context, compact: false),
+              const SizedBox(width: 12),
+              _CalendarViewSwitcher(
+                viewMode: viewMode,
+                onChanged: onViewModeChanged,
+              ),
+              const Spacer(),
+              ..._globalActions(context),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _dateControls(BuildContext context, {required bool compact}) {
+    if (viewMode == _CalendarViewMode.month) {
+      return [
+        IconButton(
+          tooltip: '上一个月',
+          onPressed: controller.previousMonth,
+          icon: const Icon(Icons.chevron_left),
+        ),
+        SizedBox(
+          width: 160,
+          child: Center(
+            child: Text(
+              app_date.monthTitle(controller.visibleMonth),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
           ),
-          SizedBox(
-            width: 160,
-            child: Center(
-              child: Text(
-                app_date.monthTitle(controller.visibleMonth),
-                style: Theme.of(context).textTheme.titleLarge,
+        ),
+        IconButton(
+          tooltip: '下一个月',
+          onPressed: controller.nextMonth,
+          icon: const Icon(Icons.chevron_right),
+        ),
+        OutlinedButton.icon(
+          onPressed: controller.goToday,
+          icon: const Icon(Icons.today_outlined),
+          label: const Text('今天'),
+        ),
+      ];
+    }
+
+    return [
+      SizedBox(
+        width: compact ? 180 : 240,
+        child: Text(
+          _selectedDateTitle(controller.selectedDate),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _globalActions(BuildContext context) {
+    return [
+      TextButton.icon(
+        onPressed: () => _showSyncDialog(context),
+        icon: const Icon(Icons.cloud_sync_outlined),
+        label: const Text('同步'),
+      ),
+      TextButton.icon(
+        onPressed: () => _showRecurringEventManager(context, controller),
+        icon: const Icon(Icons.cake_outlined),
+        label: const Text('生日/纪念日'),
+      ),
+      TextButton.icon(
+        onPressed: () => _showImportExportDialog(context, controller),
+        icon: const Icon(Icons.import_export),
+        label: const Text('导入/导出'),
+      ),
+    ];
+  }
+}
+
+String _selectedDateTitle(DateTime date) {
+  return '${date.year}年${date.month}月${date.day}日';
+}
+
+class _CalendarViewSwitcher extends StatelessWidget {
+  const _CalendarViewSwitcher({
+    required this.viewMode,
+    required this.onChanged,
+  });
+
+  final _CalendarViewMode viewMode;
+  final ValueChanged<_CalendarViewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<_CalendarViewMode>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: _CalendarViewMode.month,
+          icon: Icon(Icons.calendar_month_outlined),
+          label: Text('月历'),
+        ),
+        ButtonSegment(
+          value: _CalendarViewMode.compact,
+          icon: Icon(Icons.widgets_outlined),
+          label: Text('小组件'),
+        ),
+      ],
+      selected: {viewMode},
+      onSelectionChanged: (selection) => onChanged(selection.single),
+    );
+  }
+}
+
+class _MonthCalendarView extends StatelessWidget {
+  const _MonthCalendarView({required this.controller});
+
+  final CalendarController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showDetail = constraints.maxWidth >= 920;
+        return Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, showDetail ? 8 : 16, 16),
+                child: _MonthGrid(controller: controller),
+              ),
+            ),
+            if (showDetail)
+              SizedBox(
+                width: 360,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 12, 16, 16),
+                  child: _DayDetailPanel(controller: controller),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CompactCalendarView extends StatelessWidget {
+  const _CompactCalendarView({
+    required this.controller,
+    required this.onShowMonthView,
+  });
+
+  final CalendarController controller;
+  final VoidCallback onShowMonthView;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CompactDateActions(
+            controller: controller,
+            onShowMonthView: onShowMonthView,
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _SelectedDateDetailContent(
+                  controller: controller,
+                  showRecurringEventAction: false,
+                  showTodoHeaderAction: false,
+                ),
               ),
             ),
           ),
-          IconButton(
-            tooltip: '下一个月',
-            onPressed: controller.nextMonth,
-            icon: const Icon(Icons.chevron_right),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: controller.goToday,
-            icon: const Icon(Icons.today_outlined),
-            label: const Text('今天'),
-          ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: () => _showSyncDialog(context),
-            icon: const Icon(Icons.cloud_sync_outlined),
-            label: const Text('同步'),
-          ),
-          TextButton.icon(
-            onPressed: () => _showRecurringEventManager(context, controller),
-            icon: const Icon(Icons.cake_outlined),
-            label: const Text('生日/纪念日'),
-          ),
-          TextButton.icon(
-            onPressed: () => _showImportExportDialog(context, controller),
-            icon: const Icon(Icons.import_export),
-            label: const Text('导入/导出'),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _CompactDateActions extends StatelessWidget {
+  const _CompactDateActions({
+    required this.controller,
+    required this.onShowMonthView,
+  });
+
+  final CalendarController controller;
+  final VoidCallback onShowMonthView;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => controller.selectDate(
+            controller.selectedDate.subtract(const Duration(days: 1)),
+          ),
+          icon: const Icon(Icons.chevron_left),
+          label: const Text('前一天'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => controller.selectDate(DateTime.now()),
+          icon: const Icon(Icons.today_outlined),
+          label: const Text('今天'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => controller.selectDate(
+            controller.selectedDate.add(const Duration(days: 1)),
+          ),
+          icon: const Icon(Icons.chevron_right),
+          label: const Text('后一天'),
+        ),
+        FilledButton.icon(
+          onPressed: () => _showTodoDialog(context, controller),
+          icon: const Icon(Icons.add_task),
+          label: const Text('添加待办'),
+        ),
+        TextButton.icon(
+          onPressed: onShowMonthView,
+          icon: const Icon(Icons.calendar_month_outlined),
+          label: const Text('回到完整日历'),
+        ),
+      ],
     );
   }
 }
@@ -244,7 +445,7 @@ class _CalendarDayCell extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact =
-                constraints.maxHeight < 72 || constraints.maxWidth < 92;
+                constraints.maxHeight < 96 || constraints.maxWidth < 104;
             if (compact) {
               return Padding(
                 padding: const EdgeInsets.all(4),
@@ -454,68 +655,92 @@ class _DayDetailPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: _SelectedDateDetailContent(
+          controller: controller,
+          showRecurringEventAction: true,
+          showTodoHeaderAction: true,
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedDateDetailContent extends StatelessWidget {
+  const _SelectedDateDetailContent({
+    required this.controller,
+    required this.showRecurringEventAction,
+    required this.showTodoHeaderAction,
+  });
+
+  final CalendarController controller;
+  final bool showRecurringEventAction;
+  final bool showTodoHeaderAction;
+
+  @override
+  Widget build(BuildContext context) {
     final selected = controller.selectedDate;
     final lunar = controller.selectedLunarInfo;
     final holiday = controller.selectedOfficialHoliday;
     final occurrences = controller.selectedOccurrences;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _selectedDateTitle(selected),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 4),
+        Text('${app_date.weekdayName(selected)}  农历${lunar.fullText}'),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
           children: [
-            Text(
-              '${selected.year}年${selected.month}月${selected.day}日',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 4),
-            Text('${app_date.weekdayName(selected)}  农历${lunar.fullText}'),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                ...controller.selectedFestivals.map((item) => _InfoChip(item)),
-                if (holiday != null)
-                  _InfoChip('${holiday.name} ${holiday.status.label}'),
-                ...occurrences.map((item) => _InfoChip(item.title)),
-              ],
-            ),
-            const Divider(height: 28),
-            Row(
-              children: [
-                Text('待办事项', style: Theme.of(context).textTheme.titleMedium),
-                const Spacer(),
-                IconButton(
-                  tooltip: '添加待办',
-                  onPressed: () => _showTodoDialog(context, controller),
-                  icon: const Icon(Icons.add_task),
-                ),
-              ],
-            ),
-            Expanded(
-              child: controller.selectedTodos.isEmpty
-                  ? _EmptyTodoState(date: selected)
-                  : _TodoListWithImage(
-                      date: selected,
-                      todos: controller.selectedTodos,
-                      controller: controller,
-                    ),
-            ),
-            const Divider(height: 20),
-            FilledButton.icon(
-              onPressed: () => _showRecurringEventDialog(
-                context,
-                controller,
-                initialDate: controller.selectedDate,
-              ),
-              icon: const Icon(Icons.cake_outlined),
-              label: const Text('添加生日/纪念日'),
-            ),
+            ...controller.selectedFestivals.map((item) => _InfoChip(item)),
+            if (holiday != null)
+              _InfoChip('${holiday.name} ${holiday.status.label}'),
+            ...occurrences.map((item) => _InfoChip(item.title)),
           ],
         ),
-      ),
+        const Divider(height: 28),
+        Row(
+          children: [
+            Text('待办事项', style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            if (showTodoHeaderAction)
+              IconButton(
+                tooltip: '添加待办',
+                onPressed: () => _showTodoDialog(context, controller),
+                icon: const Icon(Icons.add_task),
+              ),
+          ],
+        ),
+        Expanded(
+          child: controller.selectedTodos.isEmpty
+              ? _EmptyTodoState(date: selected)
+              : _TodoListWithImage(
+                  date: selected,
+                  todos: controller.selectedTodos,
+                  controller: controller,
+                ),
+        ),
+        if (showRecurringEventAction) ...[
+          const Divider(height: 20),
+          FilledButton.icon(
+            onPressed: () => _showRecurringEventDialog(
+              context,
+              controller,
+              initialDate: controller.selectedDate,
+            ),
+            icon: const Icon(Icons.cake_outlined),
+            label: const Text('添加生日/纪念日'),
+          ),
+        ],
+      ],
     );
   }
 }
