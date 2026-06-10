@@ -9,13 +9,16 @@ import '../../../features/recurring_event/recurring_event_models.dart';
 import '../../../features/recurring_event/recurring_event_repository.dart';
 import '../../../features/todo/todo_repository.dart';
 import '../../../services/festival_service.dart';
+import '../../../services/daily_summary_service.dart';
 import '../../../services/json_import_export_service.dart';
 import '../../../services/lunar_calendar_service.dart';
 import '../../../services/official_holiday_service.dart';
 import '../../../services/recurring_event_service.dart';
+import '../../../services/today_summary_export_service.dart';
 import '../../../services/todo_completion_sound_service.dart';
 import '../../../shared/utils/date_utils.dart';
 import '../domain/calendar_day.dart';
+import '../domain/daily_summary.dart';
 
 class CalendarController extends ChangeNotifier {
   CalendarController(
@@ -25,6 +28,8 @@ class CalendarController extends ChangeNotifier {
     this._festivalService,
     this._officialHolidayService,
     this._recurringEventService,
+    this._dailySummaryService,
+    this._todaySummaryExportService,
     this._jsonImportExportService,
     this._todoCompletionSoundService,
   ) {
@@ -38,6 +43,8 @@ class CalendarController extends ChangeNotifier {
   final FestivalService _festivalService;
   final OfficialHolidayService _officialHolidayService;
   final RecurringEventService _recurringEventService;
+  final DailySummaryService _dailySummaryService;
+  final TodaySummaryExportService _todaySummaryExportService;
   final JsonImportExportService _jsonImportExportService;
   final TodoCompletionSoundService _todoCompletionSoundService;
 
@@ -49,14 +56,19 @@ class CalendarController extends ChangeNotifier {
   String? _baseDaysCacheKey;
   Map<String, List<TodoItem>> _visibleTodoMap = {};
   Map<String, List<EventOccurrence>> _occurrenceMap = {};
+  DailySummary? _selectedSummary;
   LunarDateInfo? _selectedLunarInfoCache;
   List<String>? _selectedFestivalsCache;
   DateTime? _selectedInfoCacheDate;
   StreamSubscription<List<TodoItem>>? _visibleTodoSubscription;
   StreamSubscription<List<TodoItem>>? _selectedTodoSubscription;
+  StreamSubscription<List<TodoItem>>? _todayTodoSubscription;
   StreamSubscription<List<RecurringEvent>>? _recurringEventSubscription;
+  int _selectedSummaryRequestId = 0;
   bool _isReady = false;
+  bool _isDisposed = false;
   String? _message;
+  String? _lastTodaySummaryExportError;
 
   DateTime get visibleMonth => _visibleMonth;
   DateTime get selectedDate => _selectedDate;
@@ -64,6 +76,8 @@ class CalendarController extends ChangeNotifier {
   String? get message => _message;
   List<TodoItem> get selectedTodos => _selectedTodos;
   List<RecurringEvent> get recurringEvents => _recurringEvents;
+  DailySummary? get selectedSummary => _selectedSummary;
+  String? get lastTodaySummaryExportError => _lastTodaySummaryExportError;
   LunarDateInfo get selectedLunarInfo {
     _ensureSelectedInfoCache();
     return _selectedLunarInfoCache!;
@@ -85,13 +99,18 @@ class CalendarController extends ChangeNotifier {
     await _loadHolidayYearsForVisibleMonth();
     _watchTodos();
     _watchSelectedTodos();
+    _watchTodayTodos();
     _recurringEventSubscription = _recurringEventRepository
         .watchEvents()
         .listen((events) {
           _recurringEvents = events;
           _rebuildOccurrenceMap();
+          unawaited(_refreshSelectedSummary());
+          unawaited(_exportTodaySummary());
           notifyListeners();
         });
+    await _refreshSelectedSummary();
+    unawaited(_exportTodaySummary());
     _isReady = true;
     notifyListeners();
   }
@@ -122,6 +141,7 @@ class CalendarController extends ChangeNotifier {
     }
     _selectedDate = normalized;
     _invalidateSelectedInfoCache();
+    _selectedSummary = null;
     final monthChanged =
         _selectedDate.month != _visibleMonth.month ||
         _selectedDate.year != _visibleMonth.year;
@@ -138,6 +158,7 @@ class CalendarController extends ChangeNotifier {
       });
     }
     _watchSelectedTodos();
+    unawaited(_refreshSelectedSummary());
   }
 
   Future<void> previousMonth() async {
@@ -163,11 +184,13 @@ class CalendarController extends ChangeNotifier {
     _selectedDate = today;
     _visibleMonth = DateTime(today.year, today.month);
     _invalidateSelectedInfoCache();
+    _selectedSummary = null;
     await _loadHolidayYearsForVisibleMonth();
     _invalidateBaseDaysCache();
     _watchTodos();
     _watchSelectedTodos();
     _rebuildOccurrenceMap();
+    await _refreshSelectedSummary();
     notifyListeners();
   }
 
@@ -181,6 +204,9 @@ class CalendarController extends ChangeNotifier {
       date: _selectedDate,
       note: note,
     );
+    if (_isToday(_selectedDate)) {
+      unawaited(_exportTodaySummary());
+    }
   }
 
   Future<void> updateTodo(
@@ -199,9 +225,45 @@ class CalendarController extends ChangeNotifier {
     if (shouldPlayCompletionSound) {
       _todoCompletionSoundService.playCompleted();
     }
+    if (_isToday(todo.date)) {
+      unawaited(_exportTodaySummary());
+    }
   }
 
-  Future<void> deleteTodo(TodoItem todo) => _todoRepository.deleteTodo(todo.id);
+  Future<void> deleteTodo(TodoItem todo) async {
+    await _todoRepository.deleteTodo(todo.id);
+    if (_isToday(todo.date)) {
+      unawaited(_exportTodaySummary());
+    }
+  }
+
+  Future<void> updateSummaryTodo(
+    DailyTodoSummary todo, {
+    String? title,
+    bool? isCompleted,
+    String? note,
+  }) async {
+    final shouldPlayCompletionSound = !todo.isCompleted && isCompleted == true;
+    await _todoRepository.updateTodo(
+      id: todo.id,
+      title: title,
+      isCompleted: isCompleted,
+      note: note,
+    );
+    if (shouldPlayCompletionSound) {
+      _todoCompletionSoundService.playCompleted();
+    }
+    if (_isToday(_selectedDate)) {
+      unawaited(_exportTodaySummary());
+    }
+  }
+
+  Future<void> deleteSummaryTodo(DailyTodoSummary todo) async {
+    await _todoRepository.deleteTodo(todo.id);
+    if (_isToday(_selectedDate)) {
+      unawaited(_exportTodaySummary());
+    }
+  }
 
   Future<void> addRecurringEvent({
     required String title,
@@ -231,6 +293,7 @@ class CalendarController extends ChangeNotifier {
       leapMonthPolicy: leapMonthPolicy,
       note: note,
     );
+    unawaited(_exportTodaySummary());
   }
 
   Future<void> updateRecurringEvent({
@@ -244,8 +307,8 @@ class CalendarController extends ChangeNotifier {
     required LeapMonthPolicy leapMonthPolicy,
     required String? note,
     required bool enabled,
-  }) {
-    return _recurringEventRepository.updateEvent(
+  }) async {
+    await _recurringEventRepository.updateEvent(
       id: id,
       title: title,
       eventType: eventType,
@@ -257,10 +320,12 @@ class CalendarController extends ChangeNotifier {
       note: note,
       enabled: enabled,
     );
+    unawaited(_exportTodaySummary());
   }
 
-  Future<void> deleteRecurringEvent(String id) {
-    return _recurringEventRepository.deleteEvent(id);
+  Future<void> deleteRecurringEvent(String id) async {
+    await _recurringEventRepository.deleteEvent(id);
+    unawaited(_exportTodaySummary());
   }
 
   Future<void> importRecurringEvents() async {
@@ -274,6 +339,7 @@ class CalendarController extends ChangeNotifier {
       return;
     }
     final result = await _jsonImportExportService.importFromFile(path);
+    unawaited(_exportTodaySummary());
     final errorText = result.hasErrors ? '，${result.errors.join('；')}' : '';
     _setMessage('已导入 ${result.importedCount} 条规则$errorText');
   }
@@ -323,8 +389,47 @@ class CalendarController extends ChangeNotifier {
         .watchTodosForDate(_selectedDate)
         .listen((todos) {
           _selectedTodos = todos;
+          unawaited(_refreshSelectedSummary());
           notifyListeners();
         });
+  }
+
+  void _watchTodayTodos() {
+    _todayTodoSubscription?.cancel();
+    final today = dateOnly(DateTime.now());
+    _todayTodoSubscription = _todoRepository.watchTodosForDate(today).listen((
+      _,
+    ) {
+      unawaited(_exportTodaySummary());
+    });
+  }
+
+  Future<void> _refreshSelectedSummary() async {
+    final requestId = ++_selectedSummaryRequestId;
+    final selectedDate = _selectedDate;
+    final summary = await _dailySummaryService.buildForDate(selectedDate);
+    if (_isDisposed ||
+        requestId != _selectedSummaryRequestId ||
+        !isSameDate(selectedDate, _selectedDate)) {
+      return;
+    }
+    _selectedSummary = summary;
+    notifyListeners();
+  }
+
+  Future<void> _exportTodaySummary() async {
+    final result = await _todaySummaryExportService.exportToday();
+    if (_isDisposed) {
+      return;
+    }
+    _lastTodaySummaryExportError = result.isSuccess ? null : result.error;
+    if (!result.isSuccess) {
+      debugPrint('today_summary 导出失败：${result.error ?? 'unknown'}');
+    }
+  }
+
+  bool _isToday(DateTime date) {
+    return isSameDate(date, DateTime.now());
   }
 
   void _rebuildOccurrenceMap() {
@@ -412,8 +517,10 @@ class CalendarController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _visibleTodoSubscription?.cancel();
     _selectedTodoSubscription?.cancel();
+    _todayTodoSubscription?.cancel();
     _recurringEventSubscription?.cancel();
     super.dispose();
   }

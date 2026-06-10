@@ -1,14 +1,18 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zrk_calendar/database/app_database.dart';
 import 'package:zrk_calendar/features/calendar/application/calendar_controller.dart';
 import 'package:zrk_calendar/features/recurring_event/recurring_event_repository.dart';
 import 'package:zrk_calendar/features/todo/todo_repository.dart';
+import 'package:zrk_calendar/services/daily_summary_service.dart';
 import 'package:zrk_calendar/services/festival_service.dart';
 import 'package:zrk_calendar/services/json_import_export_service.dart';
 import 'package:zrk_calendar/services/lunar_calendar_service.dart';
 import 'package:zrk_calendar/services/official_holiday_service.dart';
 import 'package:zrk_calendar/services/recurring_event_service.dart';
+import 'package:zrk_calendar/services/today_summary_export_service.dart';
 import 'package:zrk_calendar/services/todo_completion_sound_service.dart';
 
 void main() {
@@ -18,20 +22,40 @@ void main() {
   late TodoRepository todoRepository;
   late CalendarController controller;
   late _FakeTodoCompletionSoundService todoCompletionSoundService;
+  late Directory exportDirectory;
 
   setUp(() async {
     database = AppDatabase(NativeDatabase.memory());
     todoRepository = TodoRepository(database);
     final recurringEventRepository = RecurringEventRepository(database);
     final lunarService = LunarCalendarService();
+    final festivalService = FestivalService(lunarService);
+    final officialHolidayService = OfficialHolidayService();
+    final recurringEventService = RecurringEventService(lunarService);
+    final dailySummaryService = DailySummaryService(
+      todoRepository: todoRepository,
+      recurringEventRepository: recurringEventRepository,
+      lunarCalendarService: lunarService,
+      festivalService: festivalService,
+      officialHolidayService: officialHolidayService,
+      recurringEventService: recurringEventService,
+    );
+    exportDirectory = await Directory.systemTemp.createTemp(
+      'zrk_calendar_controller_export_test_',
+    );
     todoCompletionSoundService = _FakeTodoCompletionSoundService();
     controller = CalendarController(
       todoRepository,
       recurringEventRepository,
       lunarService,
-      FestivalService(lunarService),
-      OfficialHolidayService(),
-      RecurringEventService(lunarService),
+      festivalService,
+      officialHolidayService,
+      recurringEventService,
+      dailySummaryService,
+      TodaySummaryExportService(
+        dailySummaryService: dailySummaryService,
+        directoryProvider: () async => exportDirectory,
+      ),
       JsonImportExportService(recurringEventRepository),
       todoCompletionSoundService,
     );
@@ -41,6 +65,9 @@ void main() {
   tearDown(() async {
     controller.dispose();
     await database.close();
+    if (await exportDirectory.exists()) {
+      await exportDirectory.delete(recursive: true);
+    }
   });
 
   test('控制器可以构建月视图日期格', () async {

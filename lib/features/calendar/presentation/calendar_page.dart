@@ -8,6 +8,7 @@ import '../../../services/sync/sync_state.dart';
 import '../../../shared/utils/date_utils.dart' as app_date;
 import '../application/calendar_controller.dart';
 import '../domain/calendar_day.dart';
+import '../domain/daily_summary.dart';
 
 const _jokeBearAssetCount = 193;
 const _jokeBearAssetDirectory = 'assets/jokebear';
@@ -681,29 +682,29 @@ class _SelectedDateDetailContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = controller.selectedDate;
-    final lunar = controller.selectedLunarInfo;
-    final holiday = controller.selectedOfficialHoliday;
-    final occurrences = controller.selectedOccurrences;
+    final summary = controller.selectedSummary;
+    if (summary == null) {
+      return const Center(child: Text('正在读取当天摘要...'));
+    }
+    final holiday = summary.officialHolidayStatus;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _selectedDateTitle(selected),
+          _selectedDateTitle(summary.date),
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 4),
-        Text('${app_date.weekdayName(selected)}  农历${lunar.fullText}'),
+        Text('${summary.weekday}  农历${summary.lunarText}'),
         const SizedBox(height: 12),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            ...controller.selectedFestivals.map((item) => _InfoChip(item)),
-            if (holiday != null)
-              _InfoChip('${holiday.name} ${holiday.status.label}'),
-            ...occurrences.map((item) => _InfoChip(item.title)),
+            ...summary.festivals.map((item) => _InfoChip(item)),
+            if (holiday != null) _InfoChip('${holiday.name} ${holiday.label}'),
+            ...summary.recurringEvents.map((item) => _InfoChip(item.title)),
           ],
         ),
         const Divider(height: 28),
@@ -720,11 +721,11 @@ class _SelectedDateDetailContent extends StatelessWidget {
           ],
         ),
         Expanded(
-          child: controller.selectedTodos.isEmpty
-              ? _EmptyTodoState(date: selected)
+          child: summary.todos.isEmpty
+              ? _EmptyTodoState(date: summary.date)
               : _TodoListWithImage(
-                  date: selected,
-                  todos: controller.selectedTodos,
+                  date: summary.date,
+                  todos: summary.todos,
                   controller: controller,
                 ),
         ),
@@ -734,7 +735,7 @@ class _SelectedDateDetailContent extends StatelessWidget {
             onPressed: () => _showRecurringEventDialog(
               context,
               controller,
-              initialDate: controller.selectedDate,
+              initialDate: summary.date,
             ),
             icon: const Icon(Icons.cake_outlined),
             label: const Text('添加生日/纪念日'),
@@ -753,7 +754,7 @@ class _TodoListWithImage extends StatelessWidget {
   });
 
   final DateTime date;
-  final List<TodoItem> todos;
+  final List<DailyTodoSummary> todos;
   final CalendarController controller;
 
   @override
@@ -866,7 +867,7 @@ class _InfoChip extends StatelessWidget {
 class _TodoRow extends StatelessWidget {
   const _TodoRow({required this.todo, required this.controller});
 
-  final TodoItem todo;
+  final DailyTodoSummary todo;
   final CalendarController controller;
 
   @override
@@ -876,7 +877,8 @@ class _TodoRow extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       leading: Checkbox(
         value: todo.isCompleted,
-        onChanged: (value) => controller.updateTodo(todo, isCompleted: value),
+        onChanged: (value) =>
+            controller.updateSummaryTodo(todo, isCompleted: value),
       ),
       title: Text(
         todo.title,
@@ -899,7 +901,7 @@ class _TodoRow extends StatelessWidget {
           IconButton(
             tooltip: '删除待办',
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => controller.deleteTodo(todo),
+            onPressed: () => controller.deleteSummaryTodo(todo),
           ),
         ],
       ),
@@ -910,7 +912,7 @@ class _TodoRow extends StatelessWidget {
 Future<void> _showTodoDialog(
   BuildContext context,
   CalendarController controller, {
-  TodoItem? todo,
+  DailyTodoSummary? todo,
 }) async {
   final titleController = TextEditingController(text: todo?.title ?? '');
   final noteController = TextEditingController(text: todo?.note ?? '');
@@ -945,7 +947,7 @@ Future<void> _showTodoDialog(
           FilledButton(
             onPressed: () async {
               if (isEditing) {
-                await controller.updateTodo(
+                await controller.updateSummaryTodo(
                   todo,
                   title: titleController.text,
                   note: noteController.text,

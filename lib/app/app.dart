@@ -7,6 +7,7 @@ import '../features/calendar/application/calendar_controller.dart';
 import '../features/calendar/presentation/calendar_page.dart';
 import '../features/recurring_event/recurring_event_repository.dart';
 import '../features/todo/todo_repository.dart';
+import '../services/daily_summary_service.dart';
 import '../services/festival_service.dart';
 import '../services/json_import_export_service.dart';
 import '../services/lunar_calendar_service.dart';
@@ -16,6 +17,7 @@ import '../services/sync/noop_sync_service.dart';
 import '../services/sync/supabase_bootstrap.dart';
 import '../services/sync/supabase_sync_service.dart';
 import '../services/sync/sync_service.dart';
+import '../services/today_summary_export_service.dart';
 import '../services/todo_completion_sound_service.dart';
 import 'app_scope.dart';
 import 'theme/app_theme.dart';
@@ -45,6 +47,17 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
     final festivalService = FestivalService(lunarService);
     final officialHolidayService = OfficialHolidayService();
     final recurringEventService = RecurringEventService(lunarService);
+    final dailySummaryService = DailySummaryService(
+      todoRepository: todoRepository,
+      recurringEventRepository: recurringEventRepository,
+      lunarCalendarService: lunarService,
+      festivalService: festivalService,
+      officialHolidayService: officialHolidayService,
+      recurringEventService: recurringEventService,
+    );
+    final todaySummaryExportService = TodaySummaryExportService(
+      dailySummaryService: dailySummaryService,
+    );
     final importExportService = JsonImportExportService(
       recurringEventRepository,
     );
@@ -64,6 +77,8 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       festivalService,
       officialHolidayService,
       recurringEventService,
+      dailySummaryService,
+      todaySummaryExportService,
       importExportService,
       todoCompletionSoundService,
     );

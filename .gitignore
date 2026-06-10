@@ -66,6 +66,8 @@ linux/flutter/generated_plugins.cmake
 *.sqlite-wal
 zrk_calendar.sqlite*
 zrk_calendar_recurring_events.json
+today_summary.json
+*_summary.json
 private_*.json
 personal_*.json
 local_data/
