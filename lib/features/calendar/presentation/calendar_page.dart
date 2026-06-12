@@ -269,11 +269,7 @@ class _MobileCalendarToolbar extends StatelessWidget {
               onPressed: controller.goToday,
               icon: const Icon(Icons.today_outlined),
             ),
-            IconButton(
-              tooltip: '同步',
-              onPressed: () => _showSyncDialog(context),
-              icon: const Icon(Icons.cloud_sync_outlined),
-            ),
+            const _SyncStatusButton(compact: true),
             PopupMenuButton<_MobileMoreAction>(
               tooltip: '更多',
               icon: const Icon(Icons.more_horiz),
@@ -433,11 +429,7 @@ class _CalendarToolbar extends StatelessWidget {
 
   List<Widget> _globalActions(BuildContext context) {
     return [
-      TextButton.icon(
-        onPressed: () => _showSyncDialog(context),
-        icon: const Icon(Icons.cloud_sync_outlined),
-        label: const Text('同步'),
-      ),
+      const _SyncStatusButton(compact: false),
       TextButton.icon(
         onPressed: () => _showRecurringEventManager(context, controller),
         icon: const Icon(Icons.cake_outlined),
@@ -1622,6 +1614,121 @@ Future<void> _showTodoDialog(
   );
 }
 
+class _SyncStatusButton extends StatefulWidget {
+  const _SyncStatusButton({required this.compact});
+
+  final bool compact;
+
+  @override
+  State<_SyncStatusButton> createState() => _SyncStatusButtonState();
+}
+
+class _SyncStatusButtonState extends State<_SyncStatusButton> {
+  SyncService? _syncService;
+  Stream<SyncState>? _stateStream;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final syncService = AppScope.syncOf(context);
+    if (!identical(syncService, _syncService)) {
+      _syncService = syncService;
+      _stateStream = syncService.watchState();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = _stateStream;
+    if (stream == null) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<SyncState>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final presentation = _syncStatusPresentation(context, snapshot.data);
+        if (widget.compact) {
+          return IconButton(
+            tooltip: '云同步：${presentation.label}',
+            onPressed: () => _showSyncDialog(context),
+            icon: Icon(presentation.icon, color: presentation.color),
+          );
+        }
+        return TextButton.icon(
+          onPressed: () => _showSyncDialog(context),
+          icon: Icon(presentation.icon, color: presentation.color),
+          label: Text(
+            presentation.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      },
+    );
+  }
+}
+
+_SyncStatusPresentation _syncStatusPresentation(
+  BuildContext context,
+  SyncState? state,
+) {
+  final scheme = Theme.of(context).colorScheme;
+  return switch (state?.status) {
+    SyncStateStatus.disabled => _SyncStatusPresentation(
+      icon: Icons.cloud_off_outlined,
+      label: '本地模式',
+      color: scheme.onSurfaceVariant,
+    ),
+    SyncStateStatus.unauthenticated => _SyncStatusPresentation(
+      icon: Icons.cloud_off_outlined,
+      label: '未登录',
+      color: scheme.onSurfaceVariant,
+    ),
+    SyncStateStatus.pending => _SyncStatusPresentation(
+      icon: Icons.cloud_queue_outlined,
+      label: '待同步',
+      color: const Color(0xFF9A5B00),
+    ),
+    SyncStateStatus.syncing => _SyncStatusPresentation(
+      icon: Icons.sync,
+      label: '同步中',
+      color: scheme.primary,
+    ),
+    SyncStateStatus.failed => _SyncStatusPresentation(
+      icon: Icons.sync_problem,
+      label: '同步失败',
+      color: scheme.error,
+    ),
+    SyncStateStatus.success => _SyncStatusPresentation(
+      icon: Icons.cloud_done_outlined,
+      label: '已同步',
+      color: const Color(0xFF2F7D32),
+    ),
+    SyncStateStatus.idle => _SyncStatusPresentation(
+      icon: Icons.cloud_done_outlined,
+      label: '已登录',
+      color: scheme.primary,
+    ),
+    null => _SyncStatusPresentation(
+      icon: Icons.cloud_sync_outlined,
+      label: '同步',
+      color: scheme.onSurfaceVariant,
+    ),
+  };
+}
+
+class _SyncStatusPresentation {
+  const _SyncStatusPresentation({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+}
+
 Future<void> _showSyncDialog(BuildContext context) async {
   final syncService = AppScope.syncOf(context);
   await showDialog<void>(
@@ -1774,8 +1881,9 @@ class _SyncDialogState extends State<_SyncDialog> {
       SyncStateStatus.disabled => '未配置',
       SyncStateStatus.unauthenticated => '未登录',
       SyncStateStatus.idle => '空闲',
+      SyncStateStatus.pending => '待同步',
       SyncStateStatus.syncing => '同步中',
-      SyncStateStatus.success => '同步成功',
+      SyncStateStatus.success => '已同步',
       SyncStateStatus.failed => '同步失败',
     };
   }

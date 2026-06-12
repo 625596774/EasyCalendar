@@ -69,6 +69,19 @@ class TodoRepository {
         .get();
   }
 
+  Future<bool> hasPendingTodosIncludingDeleted() async {
+    final todo =
+        await (_database.select(_database.todoItems)
+              ..where(
+                (row) =>
+                    row.syncStatus.equals(pendingSyncStatus) |
+                    row.syncStatus.equals(failedSyncStatus),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    return todo != null;
+  }
+
   Future<List<TodoItem>> getAllTodosIncludingDeleted() {
     return _database.select(_database.todoItems).get();
   }

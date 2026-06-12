@@ -13,6 +13,7 @@ import '../services/json_import_export_service.dart';
 import '../services/lunar_calendar_service.dart';
 import '../services/official_holiday_service.dart';
 import '../services/recurring_event_service.dart';
+import '../services/sync/auto_sync_coordinator.dart';
 import '../services/sync/noop_sync_service.dart';
 import '../services/sync/supabase_bootstrap.dart';
 import '../services/sync/supabase_sync_service.dart';
@@ -36,10 +37,16 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
   late final CalendarController _controller;
   late final SyncService _syncService;
   late final Future<void> _initialization;
+  late final _LifecycleObserver _lifecycleObserver;
+  AutoSyncCoordinator? _autoSyncCoordinator;
+  AppLifecycleState? _lastLifecycleState;
 
   @override
   void initState() {
     super.initState();
+    _lifecycleObserver = _LifecycleObserver(_handleLifecycle);
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    _lastLifecycleState = WidgetsBinding.instance.lifecycleState;
     _database = AppDatabase();
     final todoRepository = TodoRepository(_database);
     final recurringEventRepository = RecurringEventRepository(_database);
@@ -62,13 +69,25 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       recurringEventRepository,
     );
     final supabaseClient = widget.supabaseBootstrap.client;
-    _syncService = supabaseClient == null
-        ? NoopSyncService(message: widget.supabaseBootstrap.message)
-        : SupabaseSyncService(
-            client: supabaseClient,
-            todoRepository: todoRepository,
-            recurringEventRepository: recurringEventRepository,
-          );
+    if (supabaseClient == null) {
+      _syncService = NoopSyncService(message: widget.supabaseBootstrap.message);
+    } else {
+      final supabaseSyncService = SupabaseSyncService(
+        client: supabaseClient,
+        todoRepository: todoRepository,
+        recurringEventRepository: recurringEventRepository,
+      );
+      _autoSyncCoordinator = AutoSyncCoordinator(
+        syncService: supabaseSyncService,
+        pendingSyncItemsChecker: () async {
+          if (await todoRepository.hasPendingTodosIncludingDeleted()) {
+            return true;
+          }
+          return recurringEventRepository.hasPendingEventsIncludingDeleted();
+        },
+      );
+      _syncService = _autoSyncCoordinator!;
+    }
     const todoCompletionSoundService = TodoCompletionSoundService();
     _controller = CalendarController(
       todoRepository,
@@ -81,6 +100,9 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       todaySummaryExportService,
       importExportService,
       todoCompletionSoundService,
+      onLocalDataChanged: () {
+        unawaited(_autoSyncCoordinator?.notifyLocalChange());
+      },
     );
     _initialization = _controller.initialize();
     unawaited(_syncService.initialize());
@@ -115,9 +137,31 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     _controller.dispose();
     unawaited(_syncService.dispose());
     _database.close();
     super.dispose();
+  }
+
+  void _handleLifecycle(AppLifecycleState state) {
+    final previous = _lastLifecycleState;
+    _lastLifecycleState = state;
+    if (state == AppLifecycleState.resumed &&
+        previous != null &&
+        previous != AppLifecycleState.resumed) {
+      unawaited(_autoSyncCoordinator?.handleAppResumed());
+    }
+  }
+}
+
+class _LifecycleObserver extends WidgetsBindingObserver {
+  _LifecycleObserver(this.onChanged);
+
+  final ValueChanged<AppLifecycleState> onChanged;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    onChanged(state);
   }
 }

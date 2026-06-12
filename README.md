@@ -1,6 +1,6 @@
 # zrk_calendar
 
-一个用 Flutter + Drift 打造的个人日历。它面向 Ubuntu Linux 和 macOS 桌面端，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都会保存在本机 SQLite 数据库中；如果配置 Supabase，也可以使用邮箱密码登录后手动云同步。
+一个用 Flutter + Drift 打造的个人日历。它面向 Ubuntu Linux、macOS 和 iOS，主视图是清爽的中文月历：每个日期同时显示公历和农历，内置常见中外节日、2026 年中国官方休/班安排，并支持按日期记录待办、管理公历/农历生日和纪念日。所有个人数据都会保存在本机 SQLite 数据库中；如果配置 Supabase，也可以使用邮箱密码登录后手动云同步。
 
 适合想要一个“轻一点、私有一点、能看农历和调休”的个人桌面日历的人。当前版本是第一版可运行实现，重点放在本地持久化、月视图、待办、生日纪念日规则和 JSON 导入导出。
 
@@ -50,6 +50,45 @@ sudo xcodebuild -runFirstLaunch
 
 如果 `flutter doctor -v` 提示 CocoaPods 缺失，需要先安装 CocoaPods，否则带平台代码的插件可能无法在 macOS/iOS 工程中正确集成。
 
+iOS：
+
+```bash
+flutter doctor -v
+flutter pub get
+flutter devices
+```
+
+模拟器调试运行：
+
+```bash
+flutter run -d <ios-simulator-device-id> --dart-define-from-file=.env
+```
+
+真机调试运行：
+
+```bash
+flutter run -d <iphone-device-id> --dart-define-from-file=.env
+```
+
+如果只使用本地模式，可以省略 `--dart-define-from-file=.env`。如果需要 Supabase 登录和同步，推荐使用 `.env` 中的 `SUPABASE_URL` 和 `SUPABASE_PUBLISHABLE_KEY` 通过 `--dart-define-from-file=.env` 注入；不要把 `.env` 提交到 Git。
+
+真机运行前需要在 Xcode 中确认签名配置：
+
+1. 打开 `ios/Runner.xcworkspace`。
+2. 选择 `Runner` target。
+3. 在 `Signing & Capabilities` 中选择自己的 Apple Developer Team。
+4. 确认 Bundle Identifier 不与已有 App 冲突。
+
+当前 iPhone 端已做窄屏适配：顶部工具栏压缩为图标操作，主视图固定为月历，点击日期后使用底部弹层查看当日详情。左右滑动可以切换月份。App 内“小组件模式”入口仅保留在桌面宽屏布局中。
+
+如需安装一个可以从 iPhone 桌面直接打开的调试/发布模式构建，可以使用：
+
+```bash
+flutter run --release -d <iphone-device-id> --dart-define-from-file=.env
+```
+
+真机 release/profile 构建仍依赖本机 Xcode 签名和设备信任配置；当前项目没有配置 App Store 发布、WidgetKit target 或 App Groups。
+
 ## 验证
 
 ```bash
@@ -57,6 +96,7 @@ flutter analyze
 flutter test
 flutter build linux
 flutter build macos
+flutter build ios --no-codesign
 ```
 
 ## 关键目录
@@ -256,4 +296,4 @@ Schema 要点：
 
 ## 第一版范围外
 
-当前不做实时同步、OAuth 第三方登录、多人共享、系统通知、AI 排程、系统日历双向同步、iPhone 打包发布、复杂项目管理和所有国家地区官方假期。
+当前不做实时同步、OAuth 第三方登录、多人共享、系统通知、AI 排程、系统日历双向同步、App Store 发布、WidgetKit、App Groups、复杂项目管理和所有国家地区官方假期。

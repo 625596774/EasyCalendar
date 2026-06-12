@@ -23,6 +23,7 @@ void main() {
   late CalendarController controller;
   late _FakeTodoCompletionSoundService todoCompletionSoundService;
   late Directory exportDirectory;
+  late int localChangeNotifications;
 
   setUp(() async {
     database = AppDatabase(NativeDatabase.memory());
@@ -44,6 +45,7 @@ void main() {
       'zrk_calendar_controller_export_test_',
     );
     todoCompletionSoundService = _FakeTodoCompletionSoundService();
+    localChangeNotifications = 0;
     controller = CalendarController(
       todoRepository,
       recurringEventRepository,
@@ -58,15 +60,17 @@ void main() {
       ),
       JsonImportExportService(recurringEventRepository),
       todoCompletionSoundService,
+      onLocalDataChanged: () => localChangeNotifications += 1,
     );
     await controller.initialize();
   });
 
   tearDown(() async {
     controller.dispose();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     await database.close();
     if (await exportDirectory.exists()) {
-      await exportDirectory.delete(recursive: true);
+      await _deleteDirectoryWithRetry(exportDirectory);
     }
   });
 
@@ -130,6 +134,19 @@ void main() {
     await controller.updateTodo(completedTodo, isCompleted: false);
     expect(todoCompletionSoundService.playCount, 1);
   });
+
+  test('本地待办变更会通知自动同步调度', () async {
+    await controller.addTodo('泡一杯茶');
+    expect(localChangeNotifications, 1);
+
+    final todo = (await todoRepository.getTodosForDate(
+      controller.selectedDate,
+    )).single;
+    await controller.updateTodo(todo, title: '泡一壶茶');
+    await controller.deleteTodo(todo);
+
+    expect(localChangeNotifications, 3);
+  });
 }
 
 class _FakeTodoCompletionSoundService extends TodoCompletionSoundService {
@@ -138,5 +155,21 @@ class _FakeTodoCompletionSoundService extends TodoCompletionSoundService {
   @override
   void playCompleted() {
     playCount += 1;
+  }
+}
+
+Future<void> _deleteDirectoryWithRetry(Directory directory) async {
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+      return;
+    } on FileSystemException {
+      if (attempt == 2) {
+        rethrow;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
   }
 }

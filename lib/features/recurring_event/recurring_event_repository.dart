@@ -62,6 +62,19 @@ class RecurringEventRepository {
         .get();
   }
 
+  Future<bool> hasPendingEventsIncludingDeleted() async {
+    final event =
+        await (_database.select(_database.recurringEvents)
+              ..where(
+                (row) =>
+                    row.syncStatus.equals(pendingSyncStatus) |
+                    row.syncStatus.equals(failedSyncStatus),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    return event != null;
+  }
+
   Future<String> addEvent({
     required String title,
     required EventType eventType,

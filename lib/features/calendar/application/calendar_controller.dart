@@ -31,8 +31,9 @@ class CalendarController extends ChangeNotifier {
     this._dailySummaryService,
     this._todaySummaryExportService,
     this._jsonImportExportService,
-    this._todoCompletionSoundService,
-  ) {
+    this._todoCompletionSoundService, {
+    this.onLocalDataChanged,
+  }) {
     _selectedDate = dateOnly(DateTime.now());
     _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
   }
@@ -47,6 +48,7 @@ class CalendarController extends ChangeNotifier {
   final TodaySummaryExportService _todaySummaryExportService;
   final JsonImportExportService _jsonImportExportService;
   final TodoCompletionSoundService _todoCompletionSoundService;
+  final VoidCallback? onLocalDataChanged;
 
   late DateTime _visibleMonth;
   late DateTime _selectedDate;
@@ -204,6 +206,7 @@ class CalendarController extends ChangeNotifier {
       date: _selectedDate,
       note: note,
     );
+    _notifyLocalDataChanged();
     if (_isToday(_selectedDate)) {
       unawaited(_exportTodaySummary());
     }
@@ -226,6 +229,7 @@ class CalendarController extends ChangeNotifier {
       isCompleted: isCompleted,
       note: note,
     );
+    _notifyLocalDataChanged();
     if (shouldPlayCompletionSound) {
       _todoCompletionSoundService.playCompleted();
     }
@@ -236,6 +240,7 @@ class CalendarController extends ChangeNotifier {
 
   Future<void> deleteTodo(TodoItem todo) async {
     await _todoRepository.deleteTodo(todo.id);
+    _notifyLocalDataChanged();
     if (_isToday(todo.date)) {
       unawaited(_exportTodaySummary());
     }
@@ -258,6 +263,7 @@ class CalendarController extends ChangeNotifier {
       isCompleted: isCompleted,
       note: note,
     );
+    _notifyLocalDataChanged();
     if (shouldPlayCompletionSound) {
       _todoCompletionSoundService.playCompleted();
     }
@@ -268,6 +274,7 @@ class CalendarController extends ChangeNotifier {
 
   Future<void> deleteSummaryTodo(DailyTodoSummary todo) async {
     await _todoRepository.deleteTodo(todo.id);
+    _notifyLocalDataChanged();
     if (_isToday(_selectedDate)) {
       unawaited(_exportTodaySummary());
     }
@@ -301,6 +308,7 @@ class CalendarController extends ChangeNotifier {
       leapMonthPolicy: leapMonthPolicy,
       note: note,
     );
+    _notifyLocalDataChanged();
     unawaited(_exportTodaySummary());
   }
 
@@ -328,11 +336,13 @@ class CalendarController extends ChangeNotifier {
       note: note,
       enabled: enabled,
     );
+    _notifyLocalDataChanged();
     unawaited(_exportTodaySummary());
   }
 
   Future<void> deleteRecurringEvent(String id) async {
     await _recurringEventRepository.deleteEvent(id);
+    _notifyLocalDataChanged();
     unawaited(_exportTodaySummary());
   }
 
@@ -347,6 +357,9 @@ class CalendarController extends ChangeNotifier {
       return;
     }
     final result = await _jsonImportExportService.importFromFile(path);
+    if (result.importedCount > 0) {
+      _notifyLocalDataChanged();
+    }
     unawaited(_exportTodaySummary());
     final errorText = result.hasErrors ? '，${result.errors.join('；')}' : '';
     _setMessage('已导入 ${result.importedCount} 条规则$errorText');
@@ -521,6 +534,10 @@ class CalendarController extends ChangeNotifier {
   void _setMessage(String message) {
     _message = message;
     notifyListeners();
+  }
+
+  void _notifyLocalDataChanged() {
+    onLocalDataChanged?.call();
   }
 
   @override

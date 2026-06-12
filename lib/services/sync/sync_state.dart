@@ -2,6 +2,7 @@ enum SyncStateStatus {
   disabled,
   unauthenticated,
   idle,
+  pending,
   syncing,
   success,
   failed,
