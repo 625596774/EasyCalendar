@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -100,15 +101,71 @@ class TodaySummaryExportService {
           await tempFile.delete();
         }
       }
+      await _tryWriteSharedSummary(payload, outputFileName: outputFileName);
       return TodaySummaryExportResult.success(file.path);
     } on Object catch (error) {
       return TodaySummaryExportResult.failure(_safeError(error));
     }
   }
 
+  Future<void> _tryWriteSharedSummary(
+    String payload, {
+    required String outputFileName,
+  }) async {
+    if (outputFileName != fileName) {
+      return;
+    }
+
+    try {
+      final directory = _sharedDirectory();
+      await directory.create(recursive: true);
+      final file = File(p.join(directory.path, fileName));
+      await _atomicWrite(file, payload);
+    } on Object catch (error) {
+      debugPrint('today_summary 共享导出失败：${_safeError(error)}');
+    }
+  }
+
+  Future<void> _atomicWrite(File file, String payload) async {
+    await file.parent.create(recursive: true);
+    final tempFile = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}.'
+      '${_tempFileSequence++}.tmp',
+    );
+    await tempFile.parent.create(recursive: true);
+    await tempFile.writeAsString('$payload\n', flush: true);
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tempFile.rename(file.path);
+    } on FileSystemException {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+      rethrow;
+    }
+  }
+
   static Future<Directory> _defaultDirectory() async {
     final supportDirectory = await getApplicationSupportDirectory();
     return Directory(p.join(supportDirectory.path, 'zrk_calendar', 'widget'));
+  }
+
+  static Directory _sharedDirectory() {
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) {
+      throw const FileSystemException('HOME is not available');
+    }
+    return Directory(
+      p.join(
+        home,
+        'Library',
+        'Application Support',
+        'ZRKShared',
+        'EasyCalendar',
+      ),
+    );
   }
 
   static String _safeError(Object error) => error.runtimeType.toString();
