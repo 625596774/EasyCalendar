@@ -196,7 +196,11 @@ class CalendarController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addTodo(String title, {String? note}) async {
+  Future<void> addTodo(
+    String title, {
+    String urgency = TodoUrgency.green,
+    String? note,
+  }) async {
     if (title.trim().isEmpty) {
       _setMessage('待办标题不能为空。');
       return;
@@ -204,6 +208,7 @@ class CalendarController extends ChangeNotifier {
     await _todoRepository.addTodo(
       title: title,
       date: _selectedDate,
+      urgency: urgency,
       note: note,
     );
     _notifyLocalDataChanged();
@@ -216,6 +221,7 @@ class CalendarController extends ChangeNotifier {
     TodoItem todo, {
     String? title,
     bool? isCompleted,
+    String? urgency,
     String? note,
   }) async {
     if (title != null && title.trim().isEmpty) {
@@ -227,6 +233,7 @@ class CalendarController extends ChangeNotifier {
       id: todo.id,
       title: title,
       isCompleted: isCompleted,
+      urgency: urgency,
       note: note,
     );
     _notifyLocalDataChanged();
@@ -246,10 +253,26 @@ class CalendarController extends ChangeNotifier {
     }
   }
 
+  Future<void> moveOverdueIncompleteTodosToToday() async {
+    final today = dateOnly(DateTime.now());
+    final movedCount = await _todoRepository.moveIncompleteTodosBeforeDate(
+      beforeDate: today,
+      targetDate: today,
+    );
+    if (movedCount == 0) {
+      _setMessage('没有需要移动的过期待办。');
+      return;
+    }
+    _notifyLocalDataChanged();
+    unawaited(_exportTodaySummary());
+    _setMessage('已移动 $movedCount 条未完成待办到今天。');
+  }
+
   Future<void> updateSummaryTodo(
     DailyTodoSummary todo, {
     String? title,
     bool? isCompleted,
+    String? urgency,
     String? note,
   }) async {
     if (title != null && title.trim().isEmpty) {
@@ -261,6 +284,7 @@ class CalendarController extends ChangeNotifier {
       id: todo.id,
       title: title,
       isCompleted: isCompleted,
+      urgency: urgency,
       note: note,
     );
     _notifyLocalDataChanged();

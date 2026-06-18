@@ -23,12 +23,17 @@ void main() {
 
   test('待办生成 UUID，更新标记 pending，删除为软删除', () async {
     final date = DateTime(2026, 6, 3);
-    final id = await todoRepository.addTodo(title: '写第一版日历', date: date);
+    final id = await todoRepository.addTodo(
+      title: '写第一版日历',
+      date: date,
+      urgency: TodoUrgency.red,
+    );
     expect(id, matches(_uuidPattern));
 
     var todos = await todoRepository.getTodosForDate(date);
     expect(todos, hasLength(1));
     expect(todos.single.id, id);
+    expect(todos.single.urgency, TodoUrgency.red);
     expect(todos.single.isCompleted, isFalse);
     expect(todos.single.deletedAt, isNull);
     expect(todos.single.syncStatus, TodoRepository.pendingSyncStatus);
@@ -43,9 +48,14 @@ void main() {
       ),
     );
 
-    await todoRepository.updateTodo(id: id, isCompleted: true);
+    await todoRepository.updateTodo(
+      id: id,
+      isCompleted: true,
+      urgency: TodoUrgency.yellow,
+    );
     todos = await todoRepository.getTodosForDate(date);
     expect(todos.single.isCompleted, isTrue);
+    expect(todos.single.urgency, TodoUrgency.yellow);
     expect(todos.single.syncStatus, TodoRepository.pendingSyncStatus);
 
     await todoRepository.deleteTodo(id);
@@ -94,6 +104,57 @@ void main() {
     expect(repairedCount, 1);
     expect(repaired!.title, TodoRepository.unnamedTodoTitle);
     expect(repaired.syncStatus, TodoRepository.pendingSyncStatus);
+  });
+
+  test('同一天待办按未完成和紧急程度排序', () async {
+    final date = DateTime(2026, 6, 3);
+    final createdAt = DateTime.utc(2026, 6, 3, 1);
+    await database.batch((batch) {
+      batch.insertAll(database.todoItems, [
+        TodoItemsCompanion.insert(
+          id: 'green-todo',
+          title: '绿色',
+          date: date,
+          urgency: const Value(TodoUrgency.green),
+          createdAt: createdAt,
+          updatedAt: createdAt,
+        ),
+        TodoItemsCompanion.insert(
+          id: 'red-todo',
+          title: '红色',
+          date: date,
+          urgency: const Value(TodoUrgency.red),
+          createdAt: createdAt.add(const Duration(minutes: 1)),
+          updatedAt: createdAt,
+        ),
+        TodoItemsCompanion.insert(
+          id: 'yellow-todo',
+          title: '黄色',
+          date: date,
+          urgency: const Value(TodoUrgency.yellow),
+          createdAt: createdAt.add(const Duration(minutes: 2)),
+          updatedAt: createdAt,
+        ),
+        TodoItemsCompanion.insert(
+          id: 'completed-red-todo',
+          title: '已完成红色',
+          date: date,
+          isCompleted: const Value(true),
+          urgency: const Value(TodoUrgency.red),
+          createdAt: createdAt.add(const Duration(minutes: 3)),
+          updatedAt: createdAt,
+        ),
+      ]);
+    });
+
+    final todos = await todoRepository.getTodosForDate(date);
+
+    expect(todos.map((todo) => todo.title), [
+      '红色',
+      '黄色',
+      '绿色',
+      '已完成红色',
+    ]);
   });
 
   test('生日和纪念日生成 UUID，删除为软删除并被默认查询过滤', () async {

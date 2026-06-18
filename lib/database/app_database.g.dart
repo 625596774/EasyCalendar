@@ -51,6 +51,18 @@ class $TodoItemsTable extends TodoItems
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _urgencyMeta = const VerificationMeta(
+    'urgency',
+  );
+  @override
+  late final GeneratedColumn<String> urgency = GeneratedColumn<String>(
+    'urgency',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('green'),
+  );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
@@ -122,6 +134,7 @@ class $TodoItemsTable extends TodoItems
     title,
     date,
     isCompleted,
+    urgency,
     note,
     createdAt,
     updatedAt,
@@ -169,6 +182,12 @@ class $TodoItemsTable extends TodoItems
           data['is_completed']!,
           _isCompletedMeta,
         ),
+      );
+    }
+    if (data.containsKey('urgency')) {
+      context.handle(
+        _urgencyMeta,
+        urgency.isAcceptableOrUnknown(data['urgency']!, _urgencyMeta),
       );
     }
     if (data.containsKey('note')) {
@@ -239,6 +258,10 @@ class $TodoItemsTable extends TodoItems
         DriftSqlType.bool,
         data['${effectivePrefix}is_completed'],
       )!,
+      urgency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}urgency'],
+      )!,
       note: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}note'],
@@ -277,6 +300,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
   final String title;
   final DateTime date;
   final bool isCompleted;
+  final String urgency;
   final String? note;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -288,6 +312,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     required this.title,
     required this.date,
     required this.isCompleted,
+    required this.urgency,
     this.note,
     required this.createdAt,
     required this.updatedAt,
@@ -302,6 +327,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     map['title'] = Variable<String>(title);
     map['date'] = Variable<DateTime>(date);
     map['is_completed'] = Variable<bool>(isCompleted);
+    map['urgency'] = Variable<String>(urgency);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
@@ -323,6 +349,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       title: Value(title),
       date: Value(date),
       isCompleted: Value(isCompleted),
+      urgency: Value(urgency),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -346,6 +373,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       title: serializer.fromJson<String>(json['title']),
       date: serializer.fromJson<DateTime>(json['date']),
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
+      urgency: serializer.fromJson<String>(json['urgency']),
       note: serializer.fromJson<String?>(json['note']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -362,6 +390,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       'title': serializer.toJson<String>(title),
       'date': serializer.toJson<DateTime>(date),
       'isCompleted': serializer.toJson<bool>(isCompleted),
+      'urgency': serializer.toJson<String>(urgency),
       'note': serializer.toJson<String?>(note),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -376,6 +405,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     String? title,
     DateTime? date,
     bool? isCompleted,
+    String? urgency,
     Value<String?> note = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -387,6 +417,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     title: title ?? this.title,
     date: date ?? this.date,
     isCompleted: isCompleted ?? this.isCompleted,
+    urgency: urgency ?? this.urgency,
     note: note.present ? note.value : this.note,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -402,6 +433,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
       isCompleted: data.isCompleted.present
           ? data.isCompleted.value
           : this.isCompleted,
+      urgency: data.urgency.present ? data.urgency.value : this.urgency,
       note: data.note.present ? data.note.value : this.note,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -422,6 +454,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
           ..write('title: $title, ')
           ..write('date: $date, ')
           ..write('isCompleted: $isCompleted, ')
+          ..write('urgency: $urgency, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -438,6 +471,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
     title,
     date,
     isCompleted,
+    urgency,
     note,
     createdAt,
     updatedAt,
@@ -453,6 +487,7 @@ class TodoItem extends DataClass implements Insertable<TodoItem> {
           other.title == this.title &&
           other.date == this.date &&
           other.isCompleted == this.isCompleted &&
+          other.urgency == this.urgency &&
           other.note == this.note &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -466,6 +501,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
   final Value<String> title;
   final Value<DateTime> date;
   final Value<bool> isCompleted;
+  final Value<String> urgency;
   final Value<String?> note;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -478,6 +514,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     this.title = const Value.absent(),
     this.date = const Value.absent(),
     this.isCompleted = const Value.absent(),
+    this.urgency = const Value.absent(),
     this.note = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -491,6 +528,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     required String title,
     required DateTime date,
     this.isCompleted = const Value.absent(),
+    this.urgency = const Value.absent(),
     this.note = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -508,6 +546,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     Expression<String>? title,
     Expression<DateTime>? date,
     Expression<bool>? isCompleted,
+    Expression<String>? urgency,
     Expression<String>? note,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -521,6 +560,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
       if (title != null) 'title': title,
       if (date != null) 'date': date,
       if (isCompleted != null) 'is_completed': isCompleted,
+      if (urgency != null) 'urgency': urgency,
       if (note != null) 'note': note,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -536,6 +576,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     Value<String>? title,
     Value<DateTime>? date,
     Value<bool>? isCompleted,
+    Value<String>? urgency,
     Value<String?>? note,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -549,6 +590,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
       title: title ?? this.title,
       date: date ?? this.date,
       isCompleted: isCompleted ?? this.isCompleted,
+      urgency: urgency ?? this.urgency,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -573,6 +615,9 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
     }
     if (isCompleted.present) {
       map['is_completed'] = Variable<bool>(isCompleted.value);
+    }
+    if (urgency.present) {
+      map['urgency'] = Variable<String>(urgency.value);
     }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
@@ -605,6 +650,7 @@ class TodoItemsCompanion extends UpdateCompanion<TodoItem> {
           ..write('title: $title, ')
           ..write('date: $date, ')
           ..write('isCompleted: $isCompleted, ')
+          ..write('urgency: $urgency, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1501,6 +1547,7 @@ typedef $$TodoItemsTableCreateCompanionBuilder =
       required String title,
       required DateTime date,
       Value<bool> isCompleted,
+      Value<String> urgency,
       Value<String?> note,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -1515,6 +1562,7 @@ typedef $$TodoItemsTableUpdateCompanionBuilder =
       Value<String> title,
       Value<DateTime> date,
       Value<bool> isCompleted,
+      Value<String> urgency,
       Value<String?> note,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -1550,6 +1598,11 @@ class $$TodoItemsTableFilterComposer
 
   ColumnFilters<bool> get isCompleted => $composableBuilder(
     column: $table.isCompleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get urgency => $composableBuilder(
+    column: $table.urgency,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1613,6 +1666,11 @@ class $$TodoItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get urgency => $composableBuilder(
+    column: $table.urgency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get note => $composableBuilder(
     column: $table.note,
     builder: (column) => ColumnOrderings(column),
@@ -1666,6 +1724,9 @@ class $$TodoItemsTableAnnotationComposer
     column: $table.isCompleted,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get urgency =>
+      $composableBuilder(column: $table.urgency, builder: (column) => column);
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
@@ -1722,6 +1783,7 @@ class $$TodoItemsTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
+                Value<String> urgency = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -1734,6 +1796,7 @@ class $$TodoItemsTableTableManager
                 title: title,
                 date: date,
                 isCompleted: isCompleted,
+                urgency: urgency,
                 note: note,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -1748,6 +1811,7 @@ class $$TodoItemsTableTableManager
                 required String title,
                 required DateTime date,
                 Value<bool> isCompleted = const Value.absent(),
+                Value<String> urgency = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -1760,6 +1824,7 @@ class $$TodoItemsTableTableManager
                 title: title,
                 date: date,
                 isCompleted: isCompleted,
+                urgency: urgency,
                 note: note,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

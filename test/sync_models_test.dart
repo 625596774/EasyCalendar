@@ -14,6 +14,7 @@ void main() {
       title: '同步待办',
       date: DateTime(2026, 6, 5, 12),
       isCompleted: false,
+      urgency: 'red',
       note: '备注',
       createdAt: DateTime.utc(2026, 6, 5, 1),
       updatedAt: DateTime.utc(2026, 6, 5, 2),
@@ -30,6 +31,7 @@ void main() {
     expect(payload['user_id'], 'user-1');
     expect(payload['date'], '2026-06-05');
     expect(payload['is_completed'], isFalse);
+    expect(payload['urgency'], 'red');
     expect(payload, isNot(contains('sync_status')));
     expect(payload, isNot(contains('last_synced_at')));
   });
@@ -40,6 +42,7 @@ void main() {
       'title': '云端待办',
       'date': '2026-06-06',
       'is_completed': true,
+      'urgency': 'yellow',
       'note': null,
       'created_at': '2026-06-05T01:00:00Z',
       'updated_at': '2026-06-05T02:00:00Z',
@@ -48,6 +51,7 @@ void main() {
 
     expect(record.date, DateTime(2026, 6, 6));
     expect(record.isCompleted, isTrue);
+    expect(record.urgency, 'yellow');
     expect(record.updatedAt, DateTime.utc(2026, 6, 5, 2));
   });
 

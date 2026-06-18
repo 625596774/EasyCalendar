@@ -23,6 +23,7 @@ class TodoSyncRecord {
     required this.title,
     required this.date,
     required this.isCompleted,
+    required this.urgency,
     required this.createdAt,
     required this.updatedAt,
     this.note,
@@ -33,6 +34,7 @@ class TodoSyncRecord {
   final String title;
   final DateTime date;
   final bool isCompleted;
+  final String urgency;
   final String? note;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -44,6 +46,7 @@ class TodoSyncRecord {
       title: item.title,
       date: _dateOnly(item.date),
       isCompleted: item.isCompleted,
+      urgency: item.urgency,
       note: item.note,
       createdAt: item.createdAt.toUtc(),
       updatedAt: item.updatedAt.toUtc(),
@@ -57,6 +60,7 @@ class TodoSyncRecord {
       title: _readString(row, 'title'),
       date: parseSupabaseDate(row['date']),
       isCompleted: _readBool(row, 'is_completed'),
+      urgency: _readOptionalString(row, 'urgency') ?? 'green',
       note: row['note'] as String?,
       createdAt: parseSupabaseTimestamp(row['created_at']),
       updatedAt: parseSupabaseTimestamp(row['updated_at']),
@@ -71,6 +75,7 @@ class TodoSyncRecord {
       'title': title,
       'date': formatSupabaseDate(date),
       'is_completed': isCompleted,
+      'urgency': urgency,
       'note': note,
       'created_at': createdAt.toUtc().toIso8601String(),
       'updated_at': updatedAt.toUtc().toIso8601String(),
@@ -213,6 +218,17 @@ DateTime _dateOnly(DateTime date) {
 
 String _readString(Map<String, dynamic> row, String key) {
   final value = row[key];
+  if (value is String) {
+    return value;
+  }
+  throw FormatException('云端字段 $key 不是字符串。');
+}
+
+String? _readOptionalString(Map<String, dynamic> row, String key) {
+  final value = row[key];
+  if (value == null) {
+    return null;
+  }
   if (value is String) {
     return value;
   }

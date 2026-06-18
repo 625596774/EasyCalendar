@@ -80,6 +80,7 @@ class DailySummaryService {
               id: todo.id,
               title: todo.title,
               isCompleted: todo.isCompleted,
+              urgency: todo.urgency,
               note: todo.note,
             ),
           )

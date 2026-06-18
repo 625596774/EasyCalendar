@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/app_scope.dart';
 import '../../../database/app_database.dart';
 import '../../../features/recurring_event/recurring_event_models.dart';
+import '../../../features/todo/todo_repository.dart';
 import '../../../services/sync/sync_service.dart';
 import '../../../services/sync/sync_state.dart';
 import '../../../shared/utils/date_utils.dart' as app_date;
@@ -430,6 +431,14 @@ class _CalendarToolbar extends StatelessWidget {
   List<Widget> _globalActions(BuildContext context) {
     return [
       const _SyncStatusButton(compact: false),
+      Tooltip(
+        message: '把今天之前未完成的待办移动到今天',
+        child: TextButton.icon(
+          onPressed: controller.moveOverdueIncompleteTodosToToday,
+          icon: const Icon(Icons.low_priority),
+          label: const Text('移到今天'),
+        ),
+      ),
       TextButton.icon(
         onPressed: () => _showRecurringEventManager(context, controller),
         icon: const Icon(Icons.cake_outlined),
@@ -904,19 +913,14 @@ class _CalendarDayCell extends StatelessWidget {
                           ...day.todos
                               .take(visibleTodoCount)
                               .map(
-                                (todo) => Text(
-                                  todo.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: todo.isCompleted
-                                        ? const Color(0xFF9AA1A8)
-                                        : const Color(0xFF424A53),
-                                    decoration: todo.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : TextDecoration.none,
-                                  ),
+                                (todo) => _TodoPreviewLabel(
+                                  title: todo.title,
+                                  urgency: todo.urgency,
+                                  isCompleted: todo.isCompleted,
+                                  fontSize: 12,
+                                  color: todo.isCompleted
+                                      ? const Color(0xFF9AA1A8)
+                                      : const Color(0xFF424A53),
                                 ),
                               ),
                           if (day.todos.length > visibleTodoCount &&
@@ -1033,22 +1037,17 @@ class _MobileCalendarDayCellContent extends StatelessWidget {
                     ...day.todos
                         .take(visibleTodoCount)
                         .map(
-                          (todo) => Text(
-                            todo.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              height: 1.12,
-                              color: muted
-                                  ? const Color(0xFF9AA1A8)
-                                  : todo.isCompleted
-                                  ? const Color(0xFF9AA1A8)
-                                  : const Color(0xFF374151),
-                              decoration: todo.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                            ),
+                          (todo) => _TodoPreviewLabel(
+                            title: todo.title,
+                            urgency: todo.urgency,
+                            isCompleted: todo.isCompleted,
+                            fontSize: 10,
+                            height: 1.12,
+                            color: muted
+                                ? const Color(0xFF9AA1A8)
+                                : todo.isCompleted
+                                ? const Color(0xFF9AA1A8)
+                                : const Color(0xFF374151),
                           ),
                         ),
                     const Spacer(),
@@ -1504,6 +1503,72 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+class _TodoPreviewLabel extends StatelessWidget {
+  const _TodoPreviewLabel({
+    required this.title,
+    required this.urgency,
+    required this.isCompleted,
+    required this.fontSize,
+    required this.color,
+    this.height,
+  });
+
+  final String title;
+  final String urgency;
+  final bool isCompleted;
+  final double fontSize;
+  final double? height;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _UrgencyDot(urgency: urgency, size: fontSize * 0.64),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: fontSize,
+              height: height,
+              color: color,
+              decoration: isCompleted
+                  ? TextDecoration.lineThrough
+                  : TextDecoration.none,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UrgencyDot extends StatelessWidget {
+  const _UrgencyDot({required this.urgency, this.size = 10});
+
+  final String urgency;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: _urgencyLabel(urgency),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: _urgencyColor(urgency),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: size <= 7 ? 0.8 : 1),
+        ),
+      ),
+    );
+  }
+}
+
 class _TodoRow extends StatelessWidget {
   const _TodoRow({required this.todo, required this.controller});
 
@@ -1515,10 +1580,19 @@ class _TodoRow extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      leading: Checkbox(
-        value: todo.isCompleted,
-        onChanged: (value) =>
-            controller.updateSummaryTodo(todo, isCompleted: value),
+      leading: SizedBox(
+        width: 58,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _UrgencyDot(urgency: todo.urgency),
+            Checkbox(
+              value: todo.isCompleted,
+              onChanged: (value) =>
+                  controller.updateSummaryTodo(todo, isCompleted: value),
+            ),
+          ],
+        ),
       ),
       title: Text(
         todo.title,
@@ -1556,62 +1630,140 @@ Future<void> _showTodoDialog(
 }) async {
   final titleController = TextEditingController(text: todo?.title ?? '');
   final noteController = TextEditingController(text: todo?.note ?? '');
+  var urgency = todo?.urgency ?? TodoUrgency.green;
   final isEditing = todo != null;
   await showDialog<void>(
     context: context,
     builder: (context) {
-      return AlertDialog(
-        title: Text(isEditing ? '编辑待办' : '添加待办'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: '标题'),
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(isEditing ? '编辑待办' : '添加待办'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '标题'),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: TodoUrgency.red,
+                        label: _UrgencySegmentLabel(
+                          label: '紧急',
+                          urgency: TodoUrgency.red,
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: TodoUrgency.yellow,
+                        label: _UrgencySegmentLabel(
+                          label: '一般',
+                          urgency: TodoUrgency.yellow,
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: TodoUrgency.green,
+                        label: _UrgencySegmentLabel(
+                          label: '不急',
+                          urgency: TodoUrgency.green,
+                        ),
+                      ),
+                    ],
+                    selected: {urgency},
+                    onSelectionChanged: (values) {
+                      setState(() => urgency = values.single);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: '备注'),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteController,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(labelText: '备注'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (titleController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('待办标题不能为空。')));
-                return;
-              }
-              if (isEditing) {
-                await controller.updateSummaryTodo(
-                  todo,
-                  title: titleController.text,
-                  note: noteController.text,
-                );
-              } else {
-                await controller.addTodo(
-                  titleController.text,
-                  note: noteController.text,
-                );
-              }
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('保存'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  if (titleController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('待办标题不能为空。')),
+                    );
+                    return;
+                  }
+                  if (isEditing) {
+                    await controller.updateSummaryTodo(
+                      todo,
+                      title: titleController.text,
+                      urgency: urgency,
+                      note: noteController.text,
+                    );
+                  } else {
+                    await controller.addTodo(
+                      titleController.text,
+                      urgency: urgency,
+                      note: noteController.text,
+                    );
+                  }
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
       );
     },
   );
+}
+
+class _UrgencySegmentLabel extends StatelessWidget {
+  const _UrgencySegmentLabel({required this.label, required this.urgency});
+
+  final String label;
+  final String urgency;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _UrgencyDot(urgency: urgency),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+  }
+}
+
+Color _urgencyColor(String urgency) {
+  return switch (urgency) {
+    TodoUrgency.red => const Color(0xFFE5484D),
+    TodoUrgency.yellow => const Color(0xFFE0A100),
+    TodoUrgency.green => const Color(0xFF2F9E44),
+    _ => const Color(0xFF2F9E44),
+  };
+}
+
+String _urgencyLabel(String urgency) {
+  return switch (urgency) {
+    TodoUrgency.red => '紧急',
+    TodoUrgency.yellow => '一般',
+    TodoUrgency.green => '不急',
+    _ => '不急',
+  };
 }
 
 class _SyncStatusButton extends StatefulWidget {

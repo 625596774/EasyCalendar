@@ -12,6 +12,7 @@ class TodoItems extends Table {
   TextColumn get title => text()();
   DateTimeColumn get date => dateTime()();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  TextColumn get urgency => text().withDefault(const Constant('green'))();
   TextColumn get note => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -50,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -59,7 +60,16 @@ class AppDatabase extends _$AppDatabase {
         if (from < 2) {
           await transaction(_migrateFromV1ToV2);
         }
+        if (from < 3) {
+          await _migrateToV3();
+        }
       },
+    );
+  }
+
+  Future<void> _migrateToV3() async {
+    await customStatement(
+      "ALTER TABLE todo_items ADD COLUMN urgency TEXT NOT NULL DEFAULT 'green';",
     );
   }
 

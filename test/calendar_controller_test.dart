@@ -147,6 +147,53 @@ void main() {
 
     expect(localChangeNotifications, 3);
   });
+
+  test('可以把今天之前未完成的待办移动到今天', () async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final overdueId = await todoRepository.addTodo(
+      title: '补交材料',
+      date: yesterday,
+    );
+    final completedOverdueId = await todoRepository.addTodo(
+      title: '已完成旧任务',
+      date: yesterday,
+    );
+    await todoRepository.updateTodo(
+      id: completedOverdueId,
+      isCompleted: true,
+    );
+    final todayId = await todoRepository.addTodo(title: '今日任务', date: today);
+    final futureId = await todoRepository.addTodo(
+      title: '明日任务',
+      date: tomorrow,
+    );
+    localChangeNotifications = 0;
+
+    await controller.moveOverdueIncompleteTodosToToday();
+
+    final overdue = await todoRepository.getTodoByIdIncludingDeleted(
+      overdueId,
+    );
+    final completedOverdue = await todoRepository.getTodoByIdIncludingDeleted(
+      completedOverdueId,
+    );
+    final todayTodo = await todoRepository.getTodoByIdIncludingDeleted(todayId);
+    final futureTodo = await todoRepository.getTodoByIdIncludingDeleted(
+      futureId,
+    );
+
+    expect(overdue?.date, today);
+    expect(overdue?.syncStatus, TodoRepository.pendingSyncStatus);
+    expect(completedOverdue?.date, yesterday);
+    expect(todayTodo?.date, today);
+    expect(futureTodo?.date, tomorrow);
+    expect(controller.message, '已移动 1 条未完成待办到今天。');
+    expect(localChangeNotifications, 1);
+  });
 }
 
 class _FakeTodoCompletionSoundService extends TodoCompletionSoundService {

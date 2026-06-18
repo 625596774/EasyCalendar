@@ -5,6 +5,24 @@ import '../../database/app_database.dart';
 import '../../services/sync/sync_models.dart';
 import '../../shared/utils/date_utils.dart';
 
+abstract final class TodoUrgency {
+  static const red = 'red';
+  static const yellow = 'yellow';
+  static const green = 'green';
+  static const values = [red, yellow, green];
+
+  static String normalize(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return green;
+    }
+    if (values.contains(normalized)) {
+      return normalized;
+    }
+    throw ArgumentError.value(value, 'urgency', '待办紧急程度无效。');
+  }
+}
+
 class TodoRepository {
   TodoRepository(this._database, {Uuid? uuid}) : _uuid = uuid ?? const Uuid();
 
@@ -29,7 +47,8 @@ class TodoRepository {
             (row) => OrderingTerm(expression: row.isCompleted),
             (row) => OrderingTerm(expression: row.createdAt),
           ]))
-        .watch();
+        .watch()
+        .map(_sortTodosForDisplay);
   }
 
   Stream<List<TodoItem>> watchTodosForDate(DateTime date) {
@@ -40,18 +59,20 @@ class TodoRepository {
             (row) => OrderingTerm(expression: row.isCompleted),
             (row) => OrderingTerm(expression: row.createdAt),
           ]))
-        .watch();
+        .watch()
+        .map(_sortTodosForDisplay);
   }
 
-  Future<List<TodoItem>> getTodosForDate(DateTime date) {
+  Future<List<TodoItem>> getTodosForDate(DateTime date) async {
     final day = dateOnly(date);
-    return (_database.select(_database.todoItems)
+    final todos = await (_database.select(_database.todoItems)
           ..where((row) => row.deletedAt.isNull() & row.date.equals(day))
           ..orderBy([
             (row) => OrderingTerm(expression: row.isCompleted),
             (row) => OrderingTerm(expression: row.createdAt),
           ]))
         .get();
+    return _sortTodosForDisplay(todos);
   }
 
   Future<TodoItem?> getTodoByIdIncludingDeleted(String id) {
@@ -89,12 +110,14 @@ class TodoRepository {
   Future<String> addTodo({
     required String title,
     required DateTime date,
+    String urgency = TodoUrgency.green,
     String? note,
   }) async {
     final normalizedTitle = title.trim();
     if (normalizedTitle.isEmpty) {
       throw ArgumentError.value(title, 'title', '待办标题不能为空。');
     }
+    final normalizedUrgency = TodoUrgency.normalize(urgency);
     final id = _uuid.v4();
     final now = DateTime.now().toUtc();
     await _database
@@ -104,6 +127,7 @@ class TodoRepository {
             id: id,
             title: normalizedTitle,
             date: dateOnly(date),
+            urgency: Value(normalizedUrgency),
             note: Value(note?.trim().isEmpty ?? true ? null : note!.trim()),
             createdAt: now,
             updatedAt: now,
@@ -117,12 +141,16 @@ class TodoRepository {
     required String id,
     String? title,
     bool? isCompleted,
+    String? urgency,
     String? note,
   }) {
     final normalizedTitle = title?.trim();
     if (normalizedTitle != null && normalizedTitle.isEmpty) {
       throw ArgumentError.value(title, 'title', '待办标题不能为空。');
     }
+    final normalizedUrgency = urgency == null
+        ? null
+        : TodoUrgency.normalize(urgency);
     return (_database.update(
       _database.todoItems,
     )..where((row) => row.id.equals(id))).write(
@@ -133,6 +161,9 @@ class TodoRepository {
         isCompleted: isCompleted == null
             ? const Value.absent()
             : Value(isCompleted),
+        urgency: normalizedUrgency == null
+            ? const Value.absent()
+            : Value(normalizedUrgency),
         note: note == null
             ? const Value.absent()
             : Value(note.trim().isEmpty ? null : note.trim()),
@@ -140,6 +171,29 @@ class TodoRepository {
         syncStatus: const Value(pendingSyncStatus),
       ),
     );
+  }
+
+  Future<int> moveIncompleteTodosBeforeDate({
+    required DateTime beforeDate,
+    required DateTime targetDate,
+  }) {
+    final normalizedBeforeDate = dateOnly(beforeDate);
+    final normalizedTargetDate = dateOnly(targetDate);
+    final now = DateTime.now().toUtc();
+    return (_database.update(_database.todoItems)
+          ..where(
+            (row) =>
+                row.deletedAt.isNull() &
+                row.isCompleted.equals(false) &
+                row.date.isSmallerThanValue(normalizedBeforeDate),
+          ))
+        .write(
+          TodoItemsCompanion(
+            date: Value(normalizedTargetDate),
+            updatedAt: Value(now),
+            syncStatus: const Value(pendingSyncStatus),
+          ),
+        );
   }
 
   Future<void> deleteTodo(String id) {
@@ -169,6 +223,7 @@ class TodoRepository {
               title: record.title,
               date: dateOnly(record.date),
               isCompleted: Value(record.isCompleted),
+              urgency: Value(TodoUrgency.normalize(record.urgency)),
               note: Value(record.note),
               createdAt: record.createdAt.toUtc(),
               updatedAt: record.updatedAt.toUtc(),
@@ -186,6 +241,7 @@ class TodoRepository {
         title: Value(record.title),
         date: Value(dateOnly(record.date)),
         isCompleted: Value(record.isCompleted),
+        urgency: Value(TodoUrgency.normalize(record.urgency)),
         note: Value(record.note),
         createdAt: Value(record.createdAt.toUtc()),
         updatedAt: Value(record.updatedAt.toUtc()),
@@ -230,4 +286,35 @@ class TodoRepository {
     }
     return invalidTodos.length;
   }
+}
+
+List<TodoItem> _sortTodosForDisplay(List<TodoItem> todos) {
+  final sorted = todos.toList(growable: false);
+  sorted.sort((a, b) {
+    final completedComparison = a.isCompleted == b.isCompleted
+        ? 0
+        : a.isCompleted
+        ? 1
+        : -1;
+    if (completedComparison != 0) {
+      return completedComparison;
+    }
+    final urgencyComparison = _urgencyRank(
+      a.urgency,
+    ).compareTo(_urgencyRank(b.urgency));
+    if (urgencyComparison != 0) {
+      return urgencyComparison;
+    }
+    return a.createdAt.compareTo(b.createdAt);
+  });
+  return sorted;
+}
+
+int _urgencyRank(String urgency) {
+  return switch (urgency) {
+    TodoUrgency.red => 0,
+    TodoUrgency.yellow => 1,
+    TodoUrgency.green => 2,
+    _ => 2,
+  };
 }

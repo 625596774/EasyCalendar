@@ -7,7 +7,7 @@ import 'package:zrk_calendar/features/recurring_event/recurring_event_repository
 import 'package:zrk_calendar/features/todo/todo_repository.dart';
 
 void main() {
-  test('schema v1 数据迁移到 v2 时保留记录并生成同步字段', () async {
+  test('schema v1 数据迁移到 v3 时保留记录并生成同步和紧急程度字段', () async {
     final directory = await Directory.systemTemp.createTemp(
       'zrk_calendar_migration_test_',
     );
@@ -27,6 +27,7 @@ void main() {
     expect(todos.single.id, matches(_uuidPattern));
     expect(todos.single.title, '旧待办');
     expect(todos.single.deletedAt, isNull);
+    expect(todos.single.urgency, TodoUrgency.green);
     expect(todos.single.syncStatus, TodoRepository.pendingSyncStatus);
     expect(todos.single.lastSyncedAt, isNull);
 

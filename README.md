@@ -119,7 +119,7 @@ test/                            # 单元测试
 
 ## 数据库表
 
-当前 `schemaVersion = 2`。从 v1 升级到 v2 时，迁移会保留已有待办和生日/纪念日规则，为旧数据生成新的 UUID，并将旧数据标记为 `sync_status = pending`、`deleted_at = null`、`last_synced_at = null`。
+当前 `schemaVersion = 3`。从 v1 升级到 v2 时，迁移会保留已有待办和生日/纪念日规则，为旧数据生成新的 UUID，并将旧数据标记为 `sync_status = pending`、`deleted_at = null`、`last_synced_at = null`。从 v2 升级到 v3 时，会为旧待办补充 `urgency = green`。
 
 `todo_items`
 
@@ -127,6 +127,7 @@ test/                            # 单元测试
 - `title`：标题
 - `date`：绑定的公历日期
 - `is_completed`：是否完成
+- `urgency`：紧急程度，当前可为 `red`、`yellow`、`green`
 - `note`：备注
 - `created_at` / `updated_at`：创建和更新时间
 - `deleted_at`：软删除时间，默认 `null`
@@ -183,6 +184,7 @@ Supabase 云端表需要开启 RLS，并确保用户只能读写自己的数据�
 - `title text not null`
 - `date date not null`
 - `is_completed boolean not null`
+- `urgency text not null default 'green'`
 - `note text`
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`

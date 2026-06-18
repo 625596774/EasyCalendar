@@ -53,6 +53,7 @@ void main() {
       'id': 'todo-1',
       'title': '写测试',
       'isCompleted': false,
+      'urgency': 'red',
     });
   });
 
@@ -135,6 +136,7 @@ DailySummary _summary() {
         id: 'todo-1',
         title: '写测试',
         isCompleted: false,
+        urgency: 'red',
         note: '不要导出这段备注',
       ),
     ],

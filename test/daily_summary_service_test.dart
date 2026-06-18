@@ -41,7 +41,12 @@ void main() {
 
   test('聚合某一天的农历、节日、休班、生日和待办摘要', () async {
     final date = DateTime(2026, 2, 17);
-    await todoRepository.addTodo(title: '准备早餐', date: date, note: '买豆浆');
+    await todoRepository.addTodo(
+      title: '准备早餐',
+      date: date,
+      urgency: TodoUrgency.red,
+      note: '买豆浆',
+    );
     final completedId = await todoRepository.addTodo(title: '已经完成', date: date);
     await todoRepository.updateTodo(id: completedId, isCompleted: true);
     await recurringEventRepository.addEvent(
@@ -65,6 +70,7 @@ void main() {
     expect(summary.officialHolidayStatus?.status, 'holiday');
     expect(summary.recurringEvents.single.title, '周年纪念');
     expect(summary.todos.map((todo) => todo.title), ['准备早餐', '已经完成']);
+    expect(summary.todos.first.urgency, TodoUrgency.red);
     expect(summary.todos.last.isCompleted, isTrue);
 
     final encoded = jsonEncode(summary.toJson());

@@ -88,15 +88,22 @@ class DailyTodoSummary {
     required this.id,
     required this.title,
     required this.isCompleted,
+    required this.urgency,
     this.note,
   });
 
   final String id;
   final String title;
   final bool isCompleted;
+  final String urgency;
   final String? note;
 
   Map<String, Object?> toJson() {
-    return {'id': id, 'title': title, 'isCompleted': isCompleted};
+    return {
+      'id': id,
+      'title': title,
+      'isCompleted': isCompleted,
+      'urgency': urgency,
+    };
   }
 }
