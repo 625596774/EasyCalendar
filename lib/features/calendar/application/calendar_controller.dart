@@ -198,6 +198,7 @@ class CalendarController extends ChangeNotifier {
 
   Future<void> addTodo(
     String title, {
+    DateTime? date,
     String urgency = TodoUrgency.green,
     String? note,
   }) async {
@@ -205,14 +206,15 @@ class CalendarController extends ChangeNotifier {
       _setMessage('待办标题不能为空。');
       return;
     }
+    final todoDate = dateOnly(date ?? _selectedDate);
     await _todoRepository.addTodo(
       title: title,
-      date: _selectedDate,
+      date: todoDate,
       urgency: urgency,
       note: note,
     );
     _notifyLocalDataChanged();
-    if (_isToday(_selectedDate)) {
+    if (_isToday(todoDate)) {
       unawaited(_exportTodaySummary());
     }
   }
@@ -220,6 +222,7 @@ class CalendarController extends ChangeNotifier {
   Future<void> updateTodo(
     TodoItem todo, {
     String? title,
+    DateTime? date,
     bool? isCompleted,
     String? urgency,
     String? note,
@@ -232,6 +235,7 @@ class CalendarController extends ChangeNotifier {
     await _todoRepository.updateTodo(
       id: todo.id,
       title: title,
+      date: date,
       isCompleted: isCompleted,
       urgency: urgency,
       note: note,
@@ -240,7 +244,7 @@ class CalendarController extends ChangeNotifier {
     if (shouldPlayCompletionSound) {
       _todoCompletionSoundService.playCompleted();
     }
-    if (_isToday(todo.date)) {
+    if (_isToday(todo.date) || (date != null && _isToday(date))) {
       unawaited(_exportTodaySummary());
     }
   }
@@ -271,6 +275,7 @@ class CalendarController extends ChangeNotifier {
   Future<void> updateSummaryTodo(
     DailyTodoSummary todo, {
     String? title,
+    DateTime? date,
     bool? isCompleted,
     String? urgency,
     String? note,
@@ -283,6 +288,7 @@ class CalendarController extends ChangeNotifier {
     await _todoRepository.updateTodo(
       id: todo.id,
       title: title,
+      date: date,
       isCompleted: isCompleted,
       urgency: urgency,
       note: note,
@@ -291,7 +297,7 @@ class CalendarController extends ChangeNotifier {
     if (shouldPlayCompletionSound) {
       _todoCompletionSoundService.playCompleted();
     }
-    if (_isToday(_selectedDate)) {
+    if (_isToday(_selectedDate) || (date != null && _isToday(date))) {
       unawaited(_exportTodaySummary());
     }
   }

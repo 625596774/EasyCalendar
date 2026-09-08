@@ -65,13 +65,14 @@ class TodoRepository {
 
   Future<List<TodoItem>> getTodosForDate(DateTime date) async {
     final day = dateOnly(date);
-    final todos = await (_database.select(_database.todoItems)
-          ..where((row) => row.deletedAt.isNull() & row.date.equals(day))
-          ..orderBy([
-            (row) => OrderingTerm(expression: row.isCompleted),
-            (row) => OrderingTerm(expression: row.createdAt),
-          ]))
-        .get();
+    final todos =
+        await (_database.select(_database.todoItems)
+              ..where((row) => row.deletedAt.isNull() & row.date.equals(day))
+              ..orderBy([
+                (row) => OrderingTerm(expression: row.isCompleted),
+                (row) => OrderingTerm(expression: row.createdAt),
+              ]))
+            .get();
     return _sortTodosForDisplay(todos);
   }
 
@@ -140,6 +141,7 @@ class TodoRepository {
   Future<void> updateTodo({
     required String id,
     String? title,
+    DateTime? date,
     bool? isCompleted,
     String? urgency,
     String? note,
@@ -158,6 +160,7 @@ class TodoRepository {
         title: normalizedTitle == null
             ? const Value.absent()
             : Value(normalizedTitle),
+        date: date == null ? const Value.absent() : Value(dateOnly(date)),
         isCompleted: isCompleted == null
             ? const Value.absent()
             : Value(isCompleted),
@@ -180,13 +183,12 @@ class TodoRepository {
     final normalizedBeforeDate = dateOnly(beforeDate);
     final normalizedTargetDate = dateOnly(targetDate);
     final now = DateTime.now().toUtc();
-    return (_database.update(_database.todoItems)
-          ..where(
-            (row) =>
-                row.deletedAt.isNull() &
-                row.isCompleted.equals(false) &
-                row.date.isSmallerThanValue(normalizedBeforeDate),
-          ))
+    return (_database.update(_database.todoItems)..where(
+          (row) =>
+              row.deletedAt.isNull() &
+              row.isCompleted.equals(false) &
+              row.date.isSmallerThanValue(normalizedBeforeDate),
+        ))
         .write(
           TodoItemsCompanion(
             date: Value(normalizedTargetDate),

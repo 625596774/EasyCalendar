@@ -148,6 +148,26 @@ void main() {
     expect(localChangeNotifications, 3);
   });
 
+  test('编辑待办可以修改日期并移动到另一天', () async {
+    final originalDate = DateTime(2026, 6, 3);
+    final targetDate = DateTime(2026, 6, 8);
+    final id = await todoRepository.addTodo(title: '换一天处理', date: originalDate);
+    final todo = (await todoRepository.getTodosForDate(originalDate)).single;
+    localChangeNotifications = 0;
+
+    await controller.updateTodo(todo, date: targetDate);
+
+    final originalTodos = await todoRepository.getTodosForDate(originalDate);
+    final targetTodos = await todoRepository.getTodosForDate(targetDate);
+    final movedTodo = await todoRepository.getTodoByIdIncludingDeleted(id);
+
+    expect(originalTodos, isEmpty);
+    expect(targetTodos.single.id, id);
+    expect(movedTodo?.date, targetDate);
+    expect(movedTodo?.syncStatus, TodoRepository.pendingSyncStatus);
+    expect(localChangeNotifications, 1);
+  });
+
   test('可以把今天之前未完成的待办移动到今天', () async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -162,10 +182,7 @@ void main() {
       title: '已完成旧任务',
       date: yesterday,
     );
-    await todoRepository.updateTodo(
-      id: completedOverdueId,
-      isCompleted: true,
-    );
+    await todoRepository.updateTodo(id: completedOverdueId, isCompleted: true);
     final todayId = await todoRepository.addTodo(title: '今日任务', date: today);
     final futureId = await todoRepository.addTodo(
       title: '明日任务',
@@ -175,9 +192,7 @@ void main() {
 
     await controller.moveOverdueIncompleteTodosToToday();
 
-    final overdue = await todoRepository.getTodoByIdIncludingDeleted(
-      overdueId,
-    );
+    final overdue = await todoRepository.getTodoByIdIncludingDeleted(overdueId);
     final completedOverdue = await todoRepository.getTodoByIdIncludingDeleted(
       completedOverdueId,
     );
