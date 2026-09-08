@@ -1,3 +1,4 @@
+import '../../subscriptions/subscription_widgets.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_scope.dart';
@@ -22,7 +23,7 @@ enum _CalendarViewMode { month, compact }
 
 enum _MobileMonthAction { previous, today, next }
 
-enum _MobileMoreAction { recurringEvents, importExport }
+enum _MobileMoreAction { recurringEvents, importExport, subscriptions }
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -277,6 +278,13 @@ class _MobileCalendarToolbar extends StatelessWidget {
               onSelected: (action) => _handleMoreAction(context, action),
               itemBuilder: (context) => const [
                 PopupMenuItem(
+                  value: _MobileMoreAction.subscriptions,
+                  child: _PopupMenuItemContent(
+                    icon: Icons.calendar_month,
+                    label: '日历订阅',
+                  ),
+                ),
+                PopupMenuItem(
                   value: _MobileMoreAction.recurringEvents,
                   child: _PopupMenuItemContent(
                     icon: Icons.cake_outlined,
@@ -311,6 +319,10 @@ class _MobileCalendarToolbar extends StatelessWidget {
 
   void _handleMoreAction(BuildContext context, _MobileMoreAction action) {
     switch (action) {
+      case _MobileMoreAction.subscriptions:
+        if (controller.subscriptions != null) {
+          showSubscriptionManager(context, controller.subscriptions!);
+        }
       case _MobileMoreAction.recurringEvents:
         _showRecurringEventManager(context, controller);
       case _MobileMoreAction.importExport:
@@ -351,7 +363,7 @@ class _CalendarToolbar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1040;
+          final compact = constraints.maxWidth < 1280;
           if (compact) {
             return Wrap(
               spacing: 8,
@@ -431,6 +443,13 @@ class _CalendarToolbar extends StatelessWidget {
   List<Widget> _globalActions(BuildContext context) {
     return [
       const _SyncStatusButton(compact: false),
+      if (controller.subscriptions != null)
+        TextButton.icon(
+          onPressed: () =>
+              showSubscriptionManager(context, controller.subscriptions!),
+          icon: const Icon(Icons.calendar_month),
+          label: const Text('日历订阅'),
+        ),
       Tooltip(
         message: '把今天之前未完成的待办移动到今天',
         child: TextButton.icon(
@@ -778,6 +797,7 @@ class _CalendarDayCell extends StatelessWidget {
         : Colors.white;
     final textColor = muted ? const Color(0xFF9AA1A8) : const Color(0xFF1F2933);
     final allLabels = [
+      ...day.subscriptionEvents.map((item) => item.event.preview),
       ...day.festivals,
       ...day.recurringEvents.map((event) => event.title),
     ];
@@ -886,6 +906,14 @@ class _CalendarDayCell extends StatelessWidget {
                                 fontSize: 12,
                                 color: muted
                                     ? const Color(0xFF9AA1A8)
+                                    : day.subscriptionEvents.isNotEmpty
+                                    ? Color(
+                                        day
+                                            .subscriptionEvents
+                                            .first
+                                            .source
+                                            .color,
+                                      )
                                     : scheme.primary,
                               ),
                             ),
@@ -1009,6 +1037,8 @@ class _MobileCalendarDayCellContent extends StatelessWidget {
                           height: 1.1,
                           color: muted
                               ? const Color(0xFF9AA1A8)
+                              : day.subscriptionEvents.isNotEmpty
+                              ? Color(day.subscriptionEvents.first.source.color)
                               : const Color(0xFF4B5563),
                         ),
                       ),
@@ -1099,6 +1129,9 @@ int _visibleMobileTodoCount({
 }
 
 String _mobileDayMetaLabel(CalendarDay day) {
+  if (day.subscriptionEvents.isNotEmpty) {
+    return day.subscriptionEvents.first.event.preview;
+  }
   if (day.festivals.isNotEmpty) {
     return day.festivals.first;
   }
@@ -1214,11 +1247,11 @@ int _availableTodoRowsForCell({
   required bool hasFestivalLine,
 }) {
   const verticalPadding = 16.0;
-  const dateRowHeight = 22.0;
-  const lunarLineHeight = 15.0;
-  const festivalLineHeight = 15.0;
+  const dateRowHeight = 28.0;
+  const lunarLineHeight = 20.0;
+  const festivalLineHeight = 20.0;
   const spacingHeight = 4.0;
-  const todoLineHeight = 15.0;
+  const todoLineHeight = 20.0;
 
   var usedHeight =
       verticalPadding + dateRowHeight + lunarLineHeight + spacingHeight;
@@ -1326,6 +1359,19 @@ class _SelectedDateDetailContent extends StatelessWidget {
             ...summary.recurringEvents.map((item) => _InfoChip(item.title)),
           ],
         ),
+        if (controller.subscriptions != null &&
+            controller.subscriptions!
+                .eventsOn(controller.selectedDate)
+                .isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('课程与日程 · 香港时间', style: Theme.of(context).textTheme.titleMedium),
+          Flexible(
+            child: SubscriptionDayList(
+              service: controller.subscriptions!,
+              day: controller.selectedDate,
+            ),
+          ),
+        ],
         const Divider(height: 28),
         Row(
           children: [

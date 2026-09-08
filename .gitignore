@@ -57,6 +57,10 @@ linux/flutter/generated_plugin_registrant.h
 linux/flutter/generated_plugins.cmake
 
 # Local app data and private calendar exports
+*.ics
+*.ical
+calendar_subscriptions.json
+calendar_sources.json
 *.sqlite
 *.sqlite3
 *.db

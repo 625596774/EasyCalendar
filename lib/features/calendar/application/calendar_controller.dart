@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../../subscriptions/subscription_service.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
@@ -33,11 +35,13 @@ class CalendarController extends ChangeNotifier {
     this._jsonImportExportService,
     this._todoCompletionSoundService, {
     this.onLocalDataChanged,
+    this.subscriptions,
   }) {
     _selectedDate = dateOnly(DateTime.now());
     _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
   }
 
+  final SubscriptionService? subscriptions;
   final TodoRepository _todoRepository;
   final RecurringEventRepository _recurringEventRepository;
   final LunarCalendarService _lunarCalendarService;
@@ -98,6 +102,9 @@ class CalendarController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await subscriptions?.initialize();
+    subscriptions?.addListener(_subscriptionsChanged);
+    unawaited(subscriptions?.refresh());
     await _loadHolidayYearsForVisibleMonth();
     _watchTodos();
     _watchSelectedTodos();
@@ -122,6 +129,8 @@ class CalendarController extends ChangeNotifier {
         .map((baseDay) {
           final key = dateKey(baseDay.date);
           return CalendarDay(
+            subscriptionEvents:
+                subscriptions?.eventsOn(baseDay.date) ?? const [],
             date: baseDay.date,
             isCurrentMonth: baseDay.isCurrentMonth,
             isToday: baseDay.isToday,
@@ -570,8 +579,14 @@ class CalendarController extends ChangeNotifier {
     onLocalDataChanged?.call();
   }
 
+  void _subscriptionsChanged() {
+    if (!_isDisposed) notifyListeners();
+  }
+
   @override
   void dispose() {
+    subscriptions?.removeListener(_subscriptionsChanged);
+    subscriptions?.dispose();
     _isDisposed = true;
     _visibleTodoSubscription?.cancel();
     _selectedTodoSubscription?.cancel();

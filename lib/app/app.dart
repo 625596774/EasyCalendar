@@ -1,3 +1,4 @@
+import '../features/subscriptions/subscription_service.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -100,6 +101,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
       todaySummaryExportService,
       importExportService,
       todoCompletionSoundService,
+      subscriptions: SubscriptionService(),
       onLocalDataChanged: () {
         unawaited(_autoSyncCoordinator?.notifyLocalChange());
       },
@@ -150,6 +152,7 @@ class _ZrkCalendarAppState extends State<ZrkCalendarApp> {
     if (state == AppLifecycleState.resumed &&
         previous != null &&
         previous != AppLifecycleState.resumed) {
+      unawaited(_controller.subscriptions?.refresh());
       unawaited(_autoSyncCoordinator?.handleAppResumed());
     }
   }

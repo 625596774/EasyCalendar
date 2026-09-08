@@ -1,3 +1,4 @@
+import '../../subscriptions/subscription_service.dart';
 import '../../../database/app_database.dart';
 import '../../../features/recurring_event/recurring_event_models.dart';
 import '../../../services/lunar_calendar_service.dart';
@@ -5,6 +6,7 @@ import '../../../services/official_holiday_service.dart';
 
 class CalendarDay {
   const CalendarDay({
+    this.subscriptionEvents = const [],
     required this.date,
     required this.isCurrentMonth,
     required this.isToday,
@@ -16,6 +18,7 @@ class CalendarDay {
     required this.officialHoliday,
   });
 
+  final List<SubscriptionOccurrence> subscriptionEvents;
   final DateTime date;
   final bool isCurrentMonth;
   final bool isToday;
