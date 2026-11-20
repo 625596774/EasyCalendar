@@ -12,15 +12,28 @@ import '../../../features/recurring_event/recurring_event_repository.dart';
 import '../../../features/todo/todo_repository.dart';
 import '../../../services/festival_service.dart';
 import '../../../services/daily_summary_service.dart';
+import '../../../services/event_completion_service.dart';
 import '../../../services/json_import_export_service.dart';
 import '../../../services/lunar_calendar_service.dart';
 import '../../../services/official_holiday_service.dart';
 import '../../../services/recurring_event_service.dart';
 import '../../../services/today_summary_export_service.dart';
+import '../../../services/todo_attachment_service.dart';
 import '../../../services/todo_completion_sound_service.dart';
 import '../../../shared/utils/date_utils.dart';
 import '../domain/calendar_day.dart';
 import '../domain/daily_summary.dart';
+
+class LocalSearchResults {
+  const LocalSearchResults({required this.todos, required this.calendarEvents});
+
+  static const empty = LocalSearchResults(todos: [], calendarEvents: []);
+
+  final List<TodoItem> todos;
+  final List<SubscriptionOccurrence> calendarEvents;
+
+  int get length => todos.length + calendarEvents.length;
+}
 
 class CalendarController extends ChangeNotifier {
   CalendarController(
@@ -36,12 +49,16 @@ class CalendarController extends ChangeNotifier {
     this._todoCompletionSoundService, {
     this.onLocalDataChanged,
     this.subscriptions,
+    this.eventCompletions,
+    this.todoAttachments,
   }) {
     _selectedDate = dateOnly(DateTime.now());
     _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
   }
 
   final SubscriptionService? subscriptions;
+  final EventCompletionService? eventCompletions;
+  final TodoAttachmentService? todoAttachments;
   final TodoRepository _todoRepository;
   final RecurringEventRepository _recurringEventRepository;
   final LunarCalendarService _lunarCalendarService;
@@ -104,6 +121,10 @@ class CalendarController extends ChangeNotifier {
   Future<void> initialize() async {
     await subscriptions?.initialize();
     subscriptions?.addListener(_subscriptionsChanged);
+    await eventCompletions?.initialize();
+    eventCompletions?.addListener(_eventCompletionsChanged);
+    await todoAttachments?.initialize();
+    todoAttachments?.addListener(_todoAttachmentsChanged);
     unawaited(subscriptions?.refresh());
     await _loadHolidayYearsForVisibleMonth();
     _watchTodos();
@@ -128,9 +149,19 @@ class CalendarController extends ChangeNotifier {
     return _baseDays()
         .map((baseDay) {
           final key = dateKey(baseDay.date);
+          final subscriptionEvents =
+              subscriptions?.eventsOn(baseDay.date) ?? const [];
+          final recurringEvents = _occurrenceMap[key] ?? const [];
           return CalendarDay(
-            subscriptionEvents:
-                subscriptions?.eventsOn(baseDay.date) ?? const [],
+            subscriptionEvents: subscriptionEvents,
+            completedSubscriptionEvents: {
+              for (final event in subscriptionEvents)
+                if (isSubscriptionCompleted(event, baseDay.date)) event,
+            },
+            completedRecurringEventIds: {
+              for (final event in recurringEvents)
+                if (isRecurringCompleted(event.id, baseDay.date)) event.id,
+            },
             date: baseDay.date,
             isCurrentMonth: baseDay.isCurrentMonth,
             isToday: baseDay.isToday,
@@ -138,11 +169,52 @@ class CalendarController extends ChangeNotifier {
             lunarInfo: baseDay.lunarInfo,
             festivals: baseDay.festivals,
             todos: _visibleTodoMap[key] ?? const [],
-            recurringEvents: _occurrenceMap[key] ?? const [],
+            recurringEvents: recurringEvents,
             officialHoliday: baseDay.officialHoliday,
           );
         })
         .toList(growable: false);
+  }
+
+  bool isRecurringCompleted(String eventId, DateTime date) {
+    return eventCompletions?.isRecurringCompleted(eventId, date) ?? false;
+  }
+
+  bool isSubscriptionCompleted(
+    SubscriptionOccurrence occurrence,
+    DateTime date,
+  ) {
+    return eventCompletions?.isSubscriptionCompleted(occurrence, date) ?? false;
+  }
+
+  Future<void> setRecurringCompleted(
+    String eventId,
+    DateTime date,
+    bool completed,
+  ) async {
+    final service = eventCompletions;
+    if (service == null) return;
+    try {
+      await service.setRecurringCompleted(eventId, date, completed);
+      if (completed) _todoCompletionSoundService.playCompleted();
+    } catch (_) {
+      _setMessage('生日/纪念日完成状态保存失败。');
+    }
+  }
+
+  Future<void> setSubscriptionCompleted(
+    SubscriptionOccurrence occurrence,
+    DateTime date,
+    bool completed,
+  ) async {
+    final service = eventCompletions;
+    if (service == null) return;
+    try {
+      await service.setSubscriptionCompleted(occurrence, date, completed);
+      if (completed) _todoCompletionSoundService.playCompleted();
+    } catch (_) {
+      _setMessage('活动完成状态保存失败。');
+    }
   }
 
   void selectDate(DateTime date) {
@@ -205,7 +277,7 @@ class CalendarController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addTodo(
+  Future<String?> addTodo(
     String title, {
     DateTime? date,
     String urgency = TodoUrgency.green,
@@ -213,10 +285,10 @@ class CalendarController extends ChangeNotifier {
   }) async {
     if (title.trim().isEmpty) {
       _setMessage('待办标题不能为空。');
-      return;
+      return null;
     }
     final todoDate = dateOnly(date ?? _selectedDate);
-    await _todoRepository.addTodo(
+    final id = await _todoRepository.addTodo(
       title: title,
       date: todoDate,
       urgency: urgency,
@@ -225,6 +297,65 @@ class CalendarController extends ChangeNotifier {
     _notifyLocalDataChanged();
     if (_isToday(todoDate)) {
       unawaited(_exportTodaySummary());
+    }
+    return id;
+  }
+
+  Future<List<TodoItem>> searchTodos(String keyword) {
+    return _todoRepository.searchTodos(keyword);
+  }
+
+  Future<LocalSearchResults> searchLocalContent(String keyword) async {
+    final todos = await _todoRepository.searchTodos(keyword);
+    final calendarEvents = subscriptions?.searchEvents(keyword) ?? const [];
+    return LocalSearchResults(todos: todos, calendarEvents: calendarEvents);
+  }
+
+  List<TodoAttachment> attachmentsForTodo(String todoId) {
+    return todoAttachments?.attachmentsForTodo(todoId) ?? const [];
+  }
+
+  File fileForAttachment(TodoAttachment attachment) {
+    return todoAttachments!.fileFor(attachment);
+  }
+
+  Future<List<String>> pickTodoPhotoPaths() async {
+    final picked = await FilePicker.pickFiles(
+      dialogTitle: '选择待办照片',
+      type: FileType.image,
+      allowMultiple: true,
+    );
+    return picked?.files
+            .map((file) => file.path)
+            .whereType<String>()
+            .toList(growable: false) ??
+        const [];
+  }
+
+  Future<bool> addTodoAttachments(String todoId, Iterable<String> paths) async {
+    final service = todoAttachments;
+    if (service == null || paths.isEmpty) return true;
+    try {
+      await service.addFromPaths(todoId, paths);
+      return true;
+    } on FormatException catch (error) {
+      _setMessage(error.message.toString());
+      return false;
+    } catch (_) {
+      _setMessage('照片附件保存失败，请检查磁盘空间后重试。');
+      return false;
+    }
+  }
+
+  Future<bool> removeTodoAttachment(String attachmentId) async {
+    final service = todoAttachments;
+    if (service == null) return false;
+    try {
+      await service.remove(attachmentId);
+      return true;
+    } catch (_) {
+      _setMessage('照片附件删除失败，请稍后重试。');
+      return false;
     }
   }
 
@@ -583,10 +714,22 @@ class CalendarController extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
+  void _eventCompletionsChanged() {
+    if (!_isDisposed) notifyListeners();
+  }
+
+  void _todoAttachmentsChanged() {
+    if (!_isDisposed) notifyListeners();
+  }
+
   @override
   void dispose() {
     subscriptions?.removeListener(_subscriptionsChanged);
     subscriptions?.dispose();
+    eventCompletions?.removeListener(_eventCompletionsChanged);
+    eventCompletions?.dispose();
+    todoAttachments?.removeListener(_todoAttachmentsChanged);
+    todoAttachments?.dispose();
     _isDisposed = true;
     _visibleTodoSubscription?.cancel();
     _selectedTodoSubscription?.cancel();

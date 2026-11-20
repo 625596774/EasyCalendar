@@ -306,9 +306,14 @@ class SubscriptionDayList extends StatelessWidget {
     super.key,
     required this.service,
     required this.day,
+    required this.isCompleted,
+    required this.onCompletionChanged,
   });
   final SubscriptionService service;
   final DateTime day;
+  final bool Function(SubscriptionOccurrence occurrence) isCompleted;
+  final Future<void> Function(SubscriptionOccurrence occurrence, bool completed)
+  onCompletionChanged;
   @override
   Widget build(BuildContext context) {
     final events = service.eventsOn(day);
@@ -318,11 +323,33 @@ class SubscriptionDayList extends StatelessWidget {
       itemCount: events.length,
       itemBuilder: (context, i) {
         final item = events[i];
+        final completed = isCompleted(item);
         return ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.school_outlined, color: Color(item.source.color)),
-          title: Text('${item.event.timeLabel}  ${item.event.title}'),
+          leading: SizedBox(
+            width: 72,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.school_outlined, color: Color(item.source.color)),
+                Checkbox(
+                  value: completed,
+                  onChanged: (value) =>
+                      onCompletionChanged(item, value ?? false),
+                ),
+              ],
+            ),
+          ),
+          title: Text(
+            '${item.event.timeLabel}  ${item.event.title}',
+            style: TextStyle(
+              color: completed ? const Color(0xFF9AA1A8) : null,
+              decoration: completed
+                  ? TextDecoration.lineThrough
+                  : TextDecoration.none,
+            ),
+          ),
           subtitle: Text(
             [
               item.source.name,

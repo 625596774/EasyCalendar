@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import '../../subscriptions/subscription_service.dart';
 import '../../subscriptions/subscription_widgets.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +10,7 @@ import '../../../features/recurring_event/recurring_event_models.dart';
 import '../../../features/todo/todo_repository.dart';
 import '../../../services/sync/sync_service.dart';
 import '../../../services/sync/sync_state.dart';
+import '../../../services/todo_attachment_service.dart';
 import '../../../shared/utils/date_utils.dart' as app_date;
 import '../application/calendar_controller.dart';
 import '../domain/calendar_day.dart';
@@ -267,7 +271,7 @@ class _MobileCalendarToolbar extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: '今天',
+              tooltip: '回到今天并选中待办',
               onPressed: controller.goToday,
               icon: const Icon(Icons.today_outlined),
             ),
@@ -422,7 +426,7 @@ class _CalendarToolbar extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: controller.goToday,
           icon: const Icon(Icons.today_outlined),
-          label: const Text('今天'),
+          label: const Text('回到今天'),
         ),
       ];
     }
@@ -622,9 +626,9 @@ class _CompactDateActions extends StatelessWidget {
           label: const Text('前一天'),
         ),
         OutlinedButton.icon(
-          onPressed: () => controller.selectDate(DateTime.now()),
+          onPressed: controller.goToday,
           icon: const Icon(Icons.today_outlined),
-          label: const Text('今天'),
+          label: const Text('回到今天'),
         ),
         OutlinedButton.icon(
           onPressed: () => controller.selectDate(
@@ -796,11 +800,7 @@ class _CalendarDayCell extends StatelessWidget {
         ? scheme.tertiaryContainer.withValues(alpha: 0.45)
         : Colors.white;
     final textColor = muted ? const Color(0xFF9AA1A8) : const Color(0xFF1F2933);
-    final allLabels = [
-      ...day.subscriptionEvents.map((item) => item.event.preview),
-      ...day.festivals,
-      ...day.recurringEvents.map((event) => event.title),
-    ];
+    final festivalLabels = day.festivals;
 
     return Material(
       color: background,
@@ -837,11 +837,14 @@ class _CalendarDayCell extends StatelessWidget {
             }
             final availableTodoRows = _availableTodoRowsForCell(
               cellHeight: constraints.maxHeight,
-              hasFestivalLine: allLabels.isNotEmpty,
+              eventRows:
+                  day.subscriptionEvents.length + day.recurringEvents.length,
+              hasCalendarLabelLine: festivalLabels.isNotEmpty,
             );
-            final visibleTodoCount = _visibleTodoCount(
-              totalTodos: day.todos.length,
+            final todoLayout = _visibleTodoLayout(
+              day.todos,
               availableRows: availableTodoRows,
+              reserveOverflowRow: true,
             );
             return ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -897,49 +900,83 @@ class _CalendarDayCell extends StatelessWidget {
                               color: textColor.withValues(alpha: 0.76),
                             ),
                           ),
-                          if (allLabels.isNotEmpty)
+                          ...day.subscriptionEvents.map((item) {
+                            final completed = day.completedSubscriptionEvents
+                                .contains(item);
+                            return Text(
+                              item.event.preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: muted || completed
+                                    ? const Color(0xFF9AA1A8)
+                                    : Color(item.source.color),
+                                decoration: completed
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                              ),
+                            );
+                          }),
+                          ...day.recurringEvents.map((event) {
+                            final completed = day.completedRecurringEventIds
+                                .contains(event.id);
+                            return Text(
+                              event.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: muted || completed
+                                    ? const Color(0xFF9AA1A8)
+                                    : scheme.primary,
+                                decoration: completed
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                              ),
+                            );
+                          }),
+                          if (festivalLabels.isNotEmpty)
                             Text(
-                              allLabels.take(2).join('、'),
+                              festivalLabels.join('、'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: muted
                                     ? const Color(0xFF9AA1A8)
-                                    : day.subscriptionEvents.isNotEmpty
-                                    ? Color(
-                                        day
-                                            .subscriptionEvents
-                                            .first
-                                            .source
-                                            .color,
-                                      )
                                     : scheme.primary,
                               ),
                             ),
                           const SizedBox(height: 2),
-                          ...day.todos
-                              .take(visibleTodoCount)
-                              .map(
-                                (todo) => _TodoPreviewLabel(
-                                  title: todo.title,
-                                  urgency: todo.urgency,
-                                  isCompleted: todo.isCompleted,
-                                  fontSize: 12,
-                                  color: todo.isCompleted
-                                      ? const Color(0xFF9AA1A8)
-                                      : const Color(0xFF424A53),
-                                ),
-                              ),
-                          if (day.todos.length > visibleTodoCount &&
+                          ...todoLayout.incomplete.map(
+                            (todo) => _TodoPreviewLabel(
+                              title: todo.title,
+                              urgency: todo.urgency,
+                              isCompleted: false,
+                              fontSize: 12,
+                              color: const Color(0xFF424A53),
+                            ),
+                          ),
+                          if (todoLayout.hiddenCount > 0 &&
                               availableTodoRows > 0)
                             Text(
-                              '还有 ${day.todos.length - visibleTodoCount} 项',
+                              '还有 ${todoLayout.hiddenCount} 项',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF6B7280),
                               ),
                             ),
+                          if (todoLayout.completed.isNotEmpty) const Spacer(),
+                          ...todoLayout.completed.map(
+                            (todo) => _TodoPreviewLabel(
+                              title: todo.title,
+                              urgency: todo.urgency,
+                              isCompleted: true,
+                              fontSize: 12,
+                              color: const Color(0xFF9AA1A8),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -967,19 +1004,30 @@ class _MobileCalendarDayCellContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metaLabel = _mobileDayMetaLabel(day);
+    final eventLabels = day.subscriptionEvents;
+    final recurringLabels = day.recurringEvents;
+    final fallbackMetaLabel = _mobileDayFallbackMetaLabel(day);
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final showMetaLabel = constraints.maxHeight >= 48;
+          final showMetaLabels = constraints.maxHeight >= 48;
           final showMarkers =
               constraints.maxHeight >= 58 && _hasMobileDayMarkers(day);
           final visibleTodoCount = _visibleMobileTodoCount(
             cellHeight: constraints.maxHeight,
-            showMetaLabel: showMetaLabel,
+            metaRowCount: showMetaLabels
+                ? eventLabels.isEmpty && recurringLabels.isEmpty
+                      ? 1
+                      : eventLabels.length + recurringLabels.length
+                : 0,
             showMarkers: showMarkers,
             totalTodos: day.todos.length,
+          );
+          final todoLayout = _visibleTodoLayout(
+            day.todos,
+            availableRows: visibleTodoCount,
+            reserveOverflowRow: false,
           );
           return Stack(
             fit: StackFit.expand,
@@ -1026,41 +1074,86 @@ class _MobileCalendarDayCellContent extends StatelessWidget {
                           ),
                       ],
                     ),
-                    if (showMetaLabel) ...[
+                    if (showMetaLabels) ...[
                       const SizedBox(height: 3),
-                      Text(
-                        metaLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10,
-                          height: 1.1,
-                          color: muted
-                              ? const Color(0xFF9AA1A8)
-                              : day.subscriptionEvents.isNotEmpty
-                              ? Color(day.subscriptionEvents.first.source.color)
-                              : const Color(0xFF4B5563),
-                        ),
-                      ),
-                    ],
-                    if (visibleTodoCount > 0) const SizedBox(height: 2),
-                    ...day.todos
-                        .take(visibleTodoCount)
-                        .map(
-                          (todo) => _TodoPreviewLabel(
-                            title: todo.title,
-                            urgency: todo.urgency,
-                            isCompleted: todo.isCompleted,
+                      if (eventLabels.isNotEmpty ||
+                          recurringLabels.isNotEmpty) ...[
+                        ...eventLabels.map((item) {
+                          final completed = day.completedSubscriptionEvents
+                              .contains(item);
+                          return Text(
+                            item.event.preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1.1,
+                              color: muted || completed
+                                  ? const Color(0xFF9AA1A8)
+                                  : Color(item.source.color),
+                              decoration: completed
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          );
+                        }),
+                        ...recurringLabels.map((event) {
+                          final completed = day.completedRecurringEventIds
+                              .contains(event.id);
+                          return Text(
+                            event.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1.1,
+                              color: muted || completed
+                                  ? const Color(0xFF9AA1A8)
+                                  : const Color(0xFF4B5563),
+                              decoration: completed
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          );
+                        }),
+                      ] else
+                        Text(
+                          fallbackMetaLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
                             fontSize: 10,
-                            height: 1.12,
+                            height: 1.1,
                             color: muted
                                 ? const Color(0xFF9AA1A8)
-                                : todo.isCompleted
-                                ? const Color(0xFF9AA1A8)
-                                : const Color(0xFF374151),
+                                : const Color(0xFF4B5563),
                           ),
                         ),
+                    ],
+                    if (visibleTodoCount > 0) const SizedBox(height: 2),
+                    ...todoLayout.incomplete.map(
+                      (todo) => _TodoPreviewLabel(
+                        title: todo.title,
+                        urgency: todo.urgency,
+                        isCompleted: false,
+                        fontSize: 10,
+                        height: 1.12,
+                        color: muted
+                            ? const Color(0xFF9AA1A8)
+                            : const Color(0xFF374151),
+                      ),
+                    ),
                     const Spacer(),
+                    ...todoLayout.completed.map(
+                      (todo) => _TodoPreviewLabel(
+                        title: todo.title,
+                        urgency: todo.urgency,
+                        isCompleted: true,
+                        fontSize: 10,
+                        height: 1.12,
+                        color: const Color(0xFF9AA1A8),
+                      ),
+                    ),
                     if (showMarkers) _MobileDayMarkers(day: day),
                   ],
                 ),
@@ -1098,7 +1191,7 @@ double _mobileJokeBearOpacity(CalendarDay day) {
 
 int _visibleMobileTodoCount({
   required double cellHeight,
-  required bool showMetaLabel,
+  required int metaRowCount,
   required bool showMarkers,
   required int totalTodos,
 }) {
@@ -1113,9 +1206,7 @@ int _visibleMobileTodoCount({
   const todoLineHeight = 12.0;
   const markerHeight = 12.0;
   var usedHeight = paddingHeight + dateRowHeight;
-  if (showMetaLabel) {
-    usedHeight += metaHeight;
-  }
+  usedHeight += metaHeight * metaRowCount;
   if (showMarkers) {
     usedHeight += markerHeight;
   }
@@ -1128,10 +1219,7 @@ int _visibleMobileTodoCount({
   return totalTodos < availableRows ? totalTodos : availableRows;
 }
 
-String _mobileDayMetaLabel(CalendarDay day) {
-  if (day.subscriptionEvents.isNotEmpty) {
-    return day.subscriptionEvents.first.event.preview;
-  }
+String _mobileDayFallbackMetaLabel(CalendarDay day) {
   if (day.festivals.isNotEmpty) {
     return day.festivals.first;
   }
@@ -1244,33 +1332,76 @@ class _MobileDayHolidayMarker extends StatelessWidget {
 
 int _availableTodoRowsForCell({
   required double cellHeight,
-  required bool hasFestivalLine,
+  required int eventRows,
+  required bool hasCalendarLabelLine,
 }) {
   const verticalPadding = 16.0;
   const dateRowHeight = 28.0;
   const lunarLineHeight = 20.0;
-  const festivalLineHeight = 20.0;
+  const metadataLineHeight = 20.0;
   const spacingHeight = 4.0;
   const todoLineHeight = 20.0;
 
   var usedHeight =
       verticalPadding + dateRowHeight + lunarLineHeight + spacingHeight;
-  if (hasFestivalLine) {
-    usedHeight += festivalLineHeight;
-  }
+  usedHeight += metadataLineHeight * eventRows;
+  if (hasCalendarLabelLine) usedHeight += metadataLineHeight;
 
   final rows = ((cellHeight - usedHeight) / todoLineHeight).floor();
   return rows < 0 ? 0 : rows;
 }
 
-int _visibleTodoCount({required int totalTodos, required int availableRows}) {
-  if (totalTodos <= 0 || availableRows <= 0) {
-    return 0;
+class _VisibleTodoLayout {
+  const _VisibleTodoLayout({
+    required this.incomplete,
+    required this.completed,
+    required this.hiddenCount,
+  });
+
+  final List<TodoItem> incomplete;
+  final List<TodoItem> completed;
+  final int hiddenCount;
+}
+
+_VisibleTodoLayout _visibleTodoLayout(
+  List<TodoItem> todos, {
+  required int availableRows,
+  required bool reserveOverflowRow,
+}) {
+  if (todos.isEmpty || availableRows <= 0) {
+    return _VisibleTodoLayout(
+      incomplete: const [],
+      completed: const [],
+      hiddenCount: todos.length,
+    );
   }
-  if (totalTodos <= availableRows) {
-    return totalTodos;
-  }
-  return availableRows == 1 ? 0 : availableRows - 1;
+  final needsOverflowRow = reserveOverflowRow && todos.length > availableRows;
+  final itemCapacity = needsOverflowRow
+      ? availableRows == 1
+            ? 0
+            : availableRows - 1
+      : todos.length < availableRows
+      ? todos.length
+      : availableRows;
+  final incompleteTodos = todos
+      .where((todo) => !todo.isCompleted)
+      .toList(growable: false);
+  final completedTodos = todos
+      .where((todo) => todo.isCompleted)
+      .toList(growable: false);
+  final visibleIncomplete = incompleteTodos
+      .take(itemCapacity)
+      .toList(growable: false);
+  final remainingRows = itemCapacity - visibleIncomplete.length;
+  final visibleCompleted = completedTodos
+      .take(remainingRows)
+      .toList(growable: false);
+  return _VisibleTodoLayout(
+    incomplete: visibleIncomplete,
+    completed: visibleCompleted,
+    hiddenCount:
+        todos.length - visibleIncomplete.length - visibleCompleted.length,
+  );
 }
 
 class _TinyBadge extends StatelessWidget {
@@ -1356,7 +1487,20 @@ class _SelectedDateDetailContent extends StatelessWidget {
           children: [
             ...summary.festivals.map((item) => _InfoChip(item)),
             if (holiday != null) _InfoChip('${holiday.name} ${holiday.label}'),
-            ...summary.recurringEvents.map((item) => _InfoChip(item.title)),
+            ...summary.recurringEvents.map(
+              (item) => _CompletableInfoChip(
+                text: item.title,
+                completed: controller.isRecurringCompleted(
+                  item.id,
+                  summary.date,
+                ),
+                onChanged: (completed) => controller.setRecurringCompleted(
+                  item.id,
+                  summary.date,
+                  completed,
+                ),
+              ),
+            ),
           ],
         ),
         if (controller.subscriptions != null &&
@@ -1369,6 +1513,16 @@ class _SelectedDateDetailContent extends StatelessWidget {
             child: SubscriptionDayList(
               service: controller.subscriptions!,
               day: controller.selectedDate,
+              isCompleted: (event) => controller.isSubscriptionCompleted(
+                event,
+                controller.selectedDate,
+              ),
+              onCompletionChanged: (event, completed) =>
+                  controller.setSubscriptionCompleted(
+                    event,
+                    controller.selectedDate,
+                    completed,
+                  ),
             ),
           ),
         ],
@@ -1377,6 +1531,16 @@ class _SelectedDateDetailContent extends StatelessWidget {
           children: [
             Text('待办事项', style: Theme.of(context).textTheme.titleMedium),
             const Spacer(),
+            IconButton(
+              tooltip: '回到今天的待办',
+              onPressed: controller.goToday,
+              icon: const Icon(Icons.today_outlined),
+            ),
+            IconButton(
+              tooltip: '搜索待办和日历',
+              onPressed: () => _showTodoSearchDialog(context, controller),
+              icon: const Icon(Icons.search),
+            ),
             if (showTodoHeaderAction)
               IconButton(
                 tooltip: '添加待办',
@@ -1529,6 +1693,38 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+class _CompletableInfoChip extends StatelessWidget {
+  const _CompletableInfoChip({
+    required this.text,
+    required this.completed,
+    required this.onChanged,
+  });
+
+  final String text;
+  final bool completed;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      selected: completed,
+      showCheckmark: true,
+      label: Text(
+        text,
+        style: TextStyle(
+          color: completed ? const Color(0xFF9AA1A8) : null,
+          decoration: completed
+              ? TextDecoration.lineThrough
+              : TextDecoration.none,
+        ),
+      ),
+      onSelected: onChanged,
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
 class _TodoPreviewLabel extends StatelessWidget {
   const _TodoPreviewLabel({
     required this.title,
@@ -1603,6 +1799,7 @@ class _TodoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final attachments = controller.attachmentsForTodo(todo.id);
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
@@ -1629,7 +1826,21 @@ class _TodoRow extends StatelessWidget {
               : TextDecoration.none,
         ),
       ),
-      subtitle: todo.note == null ? null : Text(todo.note!),
+      subtitle: todo.note == null && attachments.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (todo.note != null) Text(todo.note!),
+                if (attachments.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _TodoAttachmentStrip(
+                    attachments: attachments,
+                    controller: controller,
+                  ),
+                ],
+              ],
+            ),
       trailing: Wrap(
         spacing: 2,
         children: [
@@ -1649,133 +1860,747 @@ class _TodoRow extends StatelessWidget {
   }
 }
 
+class _TodoAttachmentStrip extends StatelessWidget {
+  const _TodoAttachmentStrip({
+    required this.attachments,
+    required this.controller,
+  });
+
+  final List<TodoAttachment> attachments;
+  final CalendarController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 58,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: attachments.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final attachment = attachments[index];
+          final file = controller.fileForAttachment(attachment);
+          return _TodoPhotoThumbnail(
+            file: file,
+            semanticLabel: attachment.originalName,
+            onTap: () => _showTodoPhoto(context, file, attachment.originalName),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TodoPhotoThumbnail extends StatelessWidget {
+  const _TodoPhotoThumbnail({
+    required this.file,
+    required this.semanticLabel,
+    required this.onTap,
+    this.onRemove,
+    this.size = 58,
+  });
+
+  final File file;
+  final String semanticLabel;
+  final VoidCallback onTap;
+  final VoidCallback? onRemove;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: Semantics(
+              label: semanticLabel,
+              button: true,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    file,
+                    fit: BoxFit.cover,
+                    cacheWidth: 180,
+                    errorBuilder: (_, _, _) => const ColoredBox(
+                      color: Color(0xFFE5E7EB),
+                      child: Icon(Icons.broken_image_outlined),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (onRemove != null)
+            Positioned(
+              right: -7,
+              top: -7,
+              child: IconButton.filled(
+                tooltip: '移除照片',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 24,
+                  height: 24,
+                ),
+                iconSize: 15,
+                onPressed: onRemove,
+                icon: const Icon(Icons.close),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showTodoSearchDialog(
+  BuildContext context,
+  CalendarController controller,
+) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => _TodoSearchDialog(controller: controller),
+  );
+}
+
+class _TodoSearchDialog extends StatefulWidget {
+  const _TodoSearchDialog({required this.controller});
+
+  final CalendarController controller;
+
+  @override
+  State<_TodoSearchDialog> createState() => _TodoSearchDialogState();
+}
+
+class _TodoSearchDialogState extends State<_TodoSearchDialog> {
+  final _searchController = TextEditingController();
+  LocalSearchResults _results = LocalSearchResults.empty;
+  var _isSearching = false;
+  var _searchFailed = false;
+  var _requestId = 0;
+
+  @override
+  void dispose() {
+    _requestId += 1;
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String keyword) async {
+    final requestId = ++_requestId;
+    final normalizedKeyword = keyword.trim();
+    if (normalizedKeyword.isEmpty) {
+      setState(() {
+        _results = LocalSearchResults.empty;
+        _isSearching = false;
+        _searchFailed = false;
+      });
+      return;
+    }
+    setState(() {
+      _isSearching = true;
+      _searchFailed = false;
+    });
+    try {
+      final results = await widget.controller.searchLocalContent(
+        normalizedKeyword,
+      );
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _results = results;
+        _isSearching = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _results = LocalSearchResults.empty;
+        _isSearching = false;
+        _searchFailed = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchController.text.trim();
+    final availableHeight = MediaQuery.sizeOf(context).height - 190;
+    final contentHeight = availableHeight.clamp(280.0, 520.0);
+    return AlertDialog(
+      title: const Text('搜索待办与导入日历'),
+      content: SizedBox(
+        width: 560,
+        height: contentHeight,
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onChanged: _search,
+              decoration: InputDecoration(
+                hintText: '输入待办、课程或活动关键词',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: '清空搜索',
+                        onPressed: () {
+                          _searchController.clear();
+                          _search('');
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(child: _buildSearchResults(query)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchResults(String query) {
+    if (query.isEmpty) {
+      return const Center(child: Text('输入关键词，搜索本地待办和已导入的日历。'));
+    }
+    if (_isSearching) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_searchFailed) {
+      return const Center(child: Text('搜索失败，请重试。'));
+    }
+    if (_results.length == 0) {
+      return Center(child: Text('没有找到包含“$query”的待办或日历活动。'));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            '找到 ${_results.length} 条',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              if (_results.todos.isNotEmpty) ...[
+                _SearchSectionHeader(label: '待办', count: _results.todos.length),
+                for (final todo in _results.todos) ...[
+                  _buildTodoResult(todo),
+                  const Divider(height: 1),
+                ],
+              ],
+              if (_results.calendarEvents.isNotEmpty) ...[
+                _SearchSectionHeader(
+                  label: '导入日历',
+                  count: _results.calendarEvents.length,
+                ),
+                for (final occurrence in _results.calendarEvents) ...[
+                  _buildCalendarResult(occurrence),
+                  const Divider(height: 1),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTodoResult(TodoItem todo) {
+    return ListTile(
+      dense: true,
+      leading: _UrgencyDot(urgency: todo.urgency),
+      title: Text(
+        todo.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: todo.isCompleted ? const Color(0xFF9AA1A8) : null,
+          decoration: todo.isCompleted
+              ? TextDecoration.lineThrough
+              : TextDecoration.none,
+        ),
+      ),
+      subtitle: Text(
+        [app_date.dateKey(todo.date), ?todo.note].join(' · '),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        widget.controller.selectDate(todo.date);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  Widget _buildCalendarResult(SubscriptionOccurrence occurrence) {
+    final event = occurrence.event;
+    final completed = widget.controller.isSubscriptionCompleted(
+      occurrence,
+      event.start,
+    );
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        Icons.event_outlined,
+        color: Color(occurrence.source.color),
+      ),
+      title: Text(
+        '${event.timeLabel}  ${event.title}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: completed ? const Color(0xFF9AA1A8) : null,
+          decoration: completed
+              ? TextDecoration.lineThrough
+              : TextDecoration.none,
+        ),
+      ),
+      subtitle: Text(
+        [
+          app_date.dateKey(event.start),
+          occurrence.source.name,
+          if (!occurrence.source.visible) '已隐藏',
+          if (event.location.isNotEmpty) event.location,
+          if (event.description.isNotEmpty) event.description,
+          if (occurrence.note.isNotEmpty) '备注：${occurrence.note}',
+        ].join(' · '),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        widget.controller.selectDate(event.start);
+        Navigator.pop(context);
+      },
+    );
+  }
+}
+
+class _SearchSectionHeader extends StatelessWidget {
+  const _SearchSectionHeader({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+      child: Text(
+        '$label（$count）',
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+    );
+  }
+}
+
+Future<void> _showTodoPhoto(BuildContext context, File file, String title) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 760),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 5,
+                child: Image.file(
+                  file,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Padding(
+                    padding: EdgeInsets.all(48),
+                    child: Text('无法读取这张照片。'),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 Future<void> _showTodoDialog(
   BuildContext context,
   CalendarController controller, {
   DailyTodoSummary? todo,
 }) async {
-  final titleController = TextEditingController(text: todo?.title ?? '');
-  final noteController = TextEditingController(text: todo?.note ?? '');
   var urgency = todo?.urgency ?? TodoUrgency.green;
   var todoDate = app_date.dateOnly(controller.selectedDate);
   final isEditing = todo != null;
-  try {
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text(isEditing ? '编辑待办' : '添加待办'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: titleController,
-                    autofocus: true,
-                    decoration: const InputDecoration(labelText: '标题'),
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: SegmentedButton<String>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(
-                          value: TodoUrgency.red,
-                          label: _UrgencySegmentLabel(
-                            label: '紧急',
-                            urgency: TodoUrgency.red,
+  final existingAttachments = todo == null
+      ? <TodoAttachment>[]
+      : controller.attachmentsForTodo(todo.id);
+  final removedAttachmentIds = <String>{};
+  final pendingPhotoPaths = <String>[];
+  var saving = false;
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return _TodoDialogControllerHost(
+        initialTitle: todo?.title ?? '',
+        initialNote: todo?.note ?? '',
+        builder: (context, titleController, noteController) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: Text(isEditing ? '编辑待办' : '添加待办'),
+                content: SizedBox(
+                  width: 520,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: titleController,
+                          autofocus: true,
+                          decoration: const InputDecoration(labelText: '标题'),
+                        ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: SegmentedButton<String>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: TodoUrgency.red,
+                                label: _UrgencySegmentLabel(
+                                  label: '紧急',
+                                  urgency: TodoUrgency.red,
+                                ),
+                              ),
+                              ButtonSegment(
+                                value: TodoUrgency.yellow,
+                                label: _UrgencySegmentLabel(
+                                  label: '一般',
+                                  urgency: TodoUrgency.yellow,
+                                ),
+                              ),
+                              ButtonSegment(
+                                value: TodoUrgency.green,
+                                label: _UrgencySegmentLabel(
+                                  label: '不急',
+                                  urgency: TodoUrgency.green,
+                                ),
+                              ),
+                            ],
+                            selected: {urgency},
+                            onSelectionChanged: saving
+                                ? null
+                                : (values) {
+                                    setState(() => urgency = values.single);
+                                  },
                           ),
                         ),
-                        ButtonSegment(
-                          value: TodoUrgency.yellow,
-                          label: _UrgencySegmentLabel(
-                            label: '一般',
-                            urgency: TodoUrgency.yellow,
-                          ),
+                        const SizedBox(height: 12),
+                        _TodoDateField(
+                          date: todoDate,
+                          onPressed: saving
+                              ? () {}
+                              : () async {
+                                  final pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: todoDate,
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (pickedDate == null) return;
+                                  setState(
+                                    () => todoDate = app_date.dateOnly(
+                                      pickedDate,
+                                    ),
+                                  );
+                                },
                         ),
-                        ButtonSegment(
-                          value: TodoUrgency.green,
-                          label: _UrgencySegmentLabel(
-                            label: '不急',
-                            urgency: TodoUrgency.green,
-                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: noteController,
+                          enabled: !saving,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(labelText: '备注'),
                         ),
+                        if (controller.todoAttachments != null) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Text(
+                                '照片附件',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${existingAttachments.where((item) => !removedAttachmentIds.contains(item.id)).length + pendingPhotoPaths.length}/${TodoAttachmentService.maxAttachmentsPerTodo}',
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: saving
+                                    ? null
+                                    : () async {
+                                        final currentCount =
+                                            existingAttachments
+                                                .where(
+                                                  (item) =>
+                                                      !removedAttachmentIds
+                                                          .contains(item.id),
+                                                )
+                                                .length +
+                                            pendingPhotoPaths.length;
+                                        final available =
+                                            TodoAttachmentService
+                                                .maxAttachmentsPerTodo -
+                                            currentCount;
+                                        if (available <= 0) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('每个待办最多添加 5 张照片。'),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        final paths = await controller
+                                            .pickTodoPhotoPaths();
+                                        if (!context.mounted || paths.isEmpty) {
+                                          return;
+                                        }
+                                        if (paths.length > available) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '还可以添加 $available 张照片。',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        setState(
+                                          () => pendingPhotoPaths.addAll(
+                                            paths.take(available),
+                                          ),
+                                        );
+                                      },
+                                icon: const Icon(Icons.add_photo_alternate),
+                                label: const Text('添加照片'),
+                              ),
+                            ],
+                          ),
+                          if (existingAttachments.any(
+                                (item) =>
+                                    !removedAttachmentIds.contains(item.id),
+                              ) ||
+                              pendingPhotoPaths.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  for (final attachment in existingAttachments)
+                                    if (!removedAttachmentIds.contains(
+                                      attachment.id,
+                                    ))
+                                      _TodoPhotoThumbnail(
+                                        size: 72,
+                                        file: controller.fileForAttachment(
+                                          attachment,
+                                        ),
+                                        semanticLabel: attachment.originalName,
+                                        onTap: () => _showTodoPhoto(
+                                          context,
+                                          controller.fileForAttachment(
+                                            attachment,
+                                          ),
+                                          attachment.originalName,
+                                        ),
+                                        onRemove: () => setState(
+                                          () => removedAttachmentIds.add(
+                                            attachment.id,
+                                          ),
+                                        ),
+                                      ),
+                                  for (final path in pendingPhotoPaths)
+                                    _TodoPhotoThumbnail(
+                                      size: 72,
+                                      file: File(path),
+                                      semanticLabel: File(
+                                        path,
+                                      ).uri.pathSegments.last,
+                                      onTap: () => _showTodoPhoto(
+                                        context,
+                                        File(path),
+                                        File(path).uri.pathSegments.last,
+                                      ),
+                                      onRemove: () => setState(
+                                        () => pendingPhotoPaths.remove(path),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '照片仅保存在本机，不参与云同步。',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                      selected: {urgency},
-                      onSelectionChanged: (values) {
-                        setState(() => urgency = values.single);
-                      },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _TodoDateField(
-                    date: todoDate,
-                    onPressed: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: todoDate,
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime(2100),
-                      );
-                      if (pickedDate == null) {
-                        return;
-                      }
-                      setState(() => todoDate = app_date.dateOnly(pickedDate));
-                    },
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: noteController,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(labelText: '备注'),
+                  FilledButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            if (titleController.text.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('待办标题不能为空。')),
+                              );
+                              return;
+                            }
+                            setState(() => saving = true);
+                            String? todoId;
+                            if (isEditing) {
+                              await controller.updateSummaryTodo(
+                                todo,
+                                title: titleController.text,
+                                date: todoDate,
+                                urgency: urgency,
+                                note: noteController.text,
+                              );
+                              todoId = todo.id;
+                            } else {
+                              todoId = await controller.addTodo(
+                                titleController.text,
+                                date: todoDate,
+                                urgency: urgency,
+                                note: noteController.text,
+                              );
+                            }
+                            if (todoId != null) {
+                              for (final attachmentId in removedAttachmentIds) {
+                                await controller.removeTodoAttachment(
+                                  attachmentId,
+                                );
+                              }
+                              await controller.addTodoAttachments(
+                                todoId,
+                                pendingPhotoPaths,
+                              );
+                            }
+                            if (context.mounted) Navigator.pop(context);
+                          },
+                    child: const Text('保存'),
                   ),
                 ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    if (titleController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('待办标题不能为空。')),
-                      );
-                      return;
-                    }
-                    if (isEditing) {
-                      await controller.updateSummaryTodo(
-                        todo,
-                        title: titleController.text,
-                        date: todoDate,
-                        urgency: urgency,
-                        note: noteController.text,
-                      );
-                    } else {
-                      await controller.addTodo(
-                        titleController.text,
-                        date: todoDate,
-                        urgency: urgency,
-                        note: noteController.text,
-                      );
-                    }
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  } finally {
-    titleController.dispose();
-    noteController.dispose();
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+class _TodoDialogControllerHost extends StatefulWidget {
+  const _TodoDialogControllerHost({
+    required this.initialTitle,
+    required this.initialNote,
+    required this.builder,
+  });
+
+  final String initialTitle;
+  final String initialNote;
+  final Widget Function(
+    BuildContext context,
+    TextEditingController titleController,
+    TextEditingController noteController,
+  )
+  builder;
+
+  @override
+  State<_TodoDialogControllerHost> createState() =>
+      _TodoDialogControllerHostState();
+}
+
+class _TodoDialogControllerHostState extends State<_TodoDialogControllerHost> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _noteController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _noteController = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _titleController, _noteController);
   }
 }
 

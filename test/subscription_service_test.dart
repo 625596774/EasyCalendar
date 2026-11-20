@@ -13,6 +13,47 @@ String event({
 }) =>
     'BEGIN:VEVENT\r\nUID:$uid\r\nDTSTART:$start\r\nSUMMARY:$title\r\n$extra\r\nEND:VEVENT';
 void main() {
+  test('本地搜索匹配导入日历的标题、地点、说明、备注和来源名称', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'calendar-subscriptions-search-test',
+    );
+    addTearDown(() => dir.delete(recursive: true));
+    final service = SubscriptionService(
+      file: File('${dir.path}/subscriptions.json'),
+      fetcher: (_) async => feed(
+        event(
+          title: 'COMP6121 Lecture',
+          extra:
+              'DTEND:20260909T080000Z\r\n'
+              'LOCATION:Room 6107\r\n'
+              'DESCRIPTION:Bring calculator',
+        ),
+      ),
+    );
+    addTearDown(service.dispose);
+    await service.initialize();
+    await service.add(
+      'HKU Moodle',
+      await service.preview('https://example.com/calendar'),
+    );
+    final source = service.sources.single;
+    await service.saveNote(source.id, source.events.single.key, '复习 chapter 3');
+
+    for (final keyword in [
+      'comp6121',
+      '6107',
+      'CALCULATOR',
+      'chapter 3',
+      'moodle',
+    ]) {
+      expect(service.searchEvents(keyword), hasLength(1));
+    }
+    await service.setVisible(source.id, false);
+    expect(service.searchEvents('comp6121'), hasLength(1));
+    expect(service.searchEvents('   '), isEmpty);
+    expect(service.searchEvents('not found'), isEmpty);
+  });
+
   test(
     'UTC, Hong Kong TZID, unfolded escaped text and all-day exclusive end',
     () {

@@ -7,6 +7,8 @@ import '../../../services/official_holiday_service.dart';
 class CalendarDay {
   const CalendarDay({
     this.subscriptionEvents = const [],
+    this.completedSubscriptionEvents = const {},
+    this.completedRecurringEventIds = const {},
     required this.date,
     required this.isCurrentMonth,
     required this.isToday,
@@ -19,6 +21,8 @@ class CalendarDay {
   });
 
   final List<SubscriptionOccurrence> subscriptionEvents;
+  final Set<SubscriptionOccurrence> completedSubscriptionEvents;
+  final Set<String> completedRecurringEventIds;
   final DateTime date;
   final bool isCurrentMonth;
   final bool isToday;

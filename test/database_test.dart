@@ -68,6 +68,29 @@ void main() {
     expect(deleted.syncStatus, TodoRepository.pendingSyncStatus);
   });
 
+  test('本地搜索按关键词匹配待办标题和备注并忽略大小写', () async {
+    final olderId = await todoRepository.addTodo(
+      title: 'Submit REPORT',
+      date: DateTime(2026, 6, 3),
+    );
+    await todoRepository.addTodo(
+      title: '准备会议',
+      date: DateTime(2026, 6, 4),
+      note: 'Review report slides',
+    );
+    final deletedId = await todoRepository.addTodo(
+      title: 'Report deleted',
+      date: DateTime(2026, 6, 5),
+    );
+    await todoRepository.deleteTodo(deletedId);
+
+    final reportResults = await todoRepository.searchTodos('  report  ');
+    expect(reportResults.map((todo) => todo.title), ['准备会议', 'Submit REPORT']);
+    expect(reportResults.last.id, olderId);
+    expect((await todoRepository.searchTodos('会议')).single.title, '准备会议');
+    expect(await todoRepository.searchTodos('   '), isEmpty);
+  });
+
   test('待办标题不能为空，历史空标题记录会在同步前修复', () async {
     final date = DateTime(2026, 6, 3);
 
@@ -149,12 +172,7 @@ void main() {
 
     final todos = await todoRepository.getTodosForDate(date);
 
-    expect(todos.map((todo) => todo.title), [
-      '红色',
-      '黄色',
-      '绿色',
-      '已完成红色',
-    ]);
+    expect(todos.map((todo) => todo.title), ['红色', '黄色', '绿色', '已完成红色']);
   });
 
   test('生日和纪念日生成 UUID，删除为软删除并被默认查询过滤', () async {

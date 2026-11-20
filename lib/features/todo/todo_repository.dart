@@ -76,6 +76,30 @@ class TodoRepository {
     return _sortTodosForDisplay(todos);
   }
 
+  Future<List<TodoItem>> searchTodos(String keyword) async {
+    final normalizedKeyword = keyword.trim().toLowerCase();
+    if (normalizedKeyword.isEmpty) {
+      return const [];
+    }
+    final todos = await (_database.select(
+      _database.todoItems,
+    )..where((row) => row.deletedAt.isNull())).get();
+    final matches = todos.where((todo) {
+      final titleMatches = todo.title.toLowerCase().contains(normalizedKeyword);
+      final noteMatches =
+          todo.note?.toLowerCase().contains(normalizedKeyword) ?? false;
+      return titleMatches || noteMatches;
+    }).toList();
+    matches.sort((a, b) {
+      final dateComparison = b.date.compareTo(a.date);
+      if (dateComparison != 0) {
+        return dateComparison;
+      }
+      return _compareTodosForDisplay(a, b);
+    });
+    return matches;
+  }
+
   Future<TodoItem?> getTodoByIdIncludingDeleted(String id) {
     return (_database.select(
       _database.todoItems,
@@ -292,24 +316,26 @@ class TodoRepository {
 
 List<TodoItem> _sortTodosForDisplay(List<TodoItem> todos) {
   final sorted = todos.toList(growable: false);
-  sorted.sort((a, b) {
-    final completedComparison = a.isCompleted == b.isCompleted
-        ? 0
-        : a.isCompleted
-        ? 1
-        : -1;
-    if (completedComparison != 0) {
-      return completedComparison;
-    }
-    final urgencyComparison = _urgencyRank(
-      a.urgency,
-    ).compareTo(_urgencyRank(b.urgency));
-    if (urgencyComparison != 0) {
-      return urgencyComparison;
-    }
-    return a.createdAt.compareTo(b.createdAt);
-  });
+  sorted.sort(_compareTodosForDisplay);
   return sorted;
+}
+
+int _compareTodosForDisplay(TodoItem a, TodoItem b) {
+  final completedComparison = a.isCompleted == b.isCompleted
+      ? 0
+      : a.isCompleted
+      ? 1
+      : -1;
+  if (completedComparison != 0) {
+    return completedComparison;
+  }
+  final urgencyComparison = _urgencyRank(
+    a.urgency,
+  ).compareTo(_urgencyRank(b.urgency));
+  if (urgencyComparison != 0) {
+    return urgencyComparison;
+  }
+  return a.createdAt.compareTo(b.createdAt);
 }
 
 int _urgencyRank(String urgency) {

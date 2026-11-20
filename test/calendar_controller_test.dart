@@ -83,6 +83,21 @@ void main() {
     expect(days.first.lunarInfo.dayText, isNotEmpty);
   });
 
+  test('回到今天会切换月份并选中今天的待办日期格', () async {
+    controller.selectDate(DateTime(2032, 4, 18));
+
+    await controller.goToday();
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    expect(controller.selectedDate, today);
+    expect(controller.visibleMonth, DateTime(today.year, today.month));
+    final selectedToday = controller.buildDays().singleWhere(
+      (day) => day.isToday,
+    );
+    expect(selectedToday.isSelected, isTrue);
+  });
+
   test('月视图不生成不含本月日期的整行', () {
     controller.selectDate(DateTime(2026, 2, 17));
     final days = controller.buildDays();

@@ -61,6 +61,9 @@ linux/flutter/generated_plugins.cmake
 *.ical
 calendar_subscriptions.json
 calendar_sources.json
+event_completions.json
+todo_attachments.json
+todo_attachments/
 *.sqlite
 *.sqlite3
 *.db

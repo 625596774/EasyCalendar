@@ -141,6 +141,29 @@ class SubscriptionService extends ChangeNotifier {
     return items;
   }
 
+  List<SubscriptionOccurrence> searchEvents(String keyword) {
+    final normalizedKeyword = keyword.trim().toLowerCase();
+    if (normalizedKeyword.isEmpty) {
+      return const [];
+    }
+    final results = [
+      for (final source in _sources)
+        for (final event in source.events)
+          if (!event.cancelled &&
+              _matchesSearchKeyword(
+                normalizedKeyword,
+                source.name,
+                event.title,
+                event.location,
+                event.description,
+                source.notes[event.key] ?? '',
+              ))
+            SubscriptionOccurrence(source, event),
+    ];
+    results.sort((a, b) => b.event.start.compareTo(a.event.start));
+    return results;
+  }
+
   static Uri validateUrl(String value) {
     final uri = Uri.tryParse(value.trim().replaceAll(r'\&', '&'));
     if (uri == null ||
@@ -367,6 +390,23 @@ class SubscriptionService extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+bool _matchesSearchKeyword(
+  String keyword,
+  String first,
+  String second,
+  String third,
+  String fourth,
+  String fifth,
+) {
+  return [
+    first,
+    second,
+    third,
+    fourth,
+    fifth,
+  ].any((value) => value.toLowerCase().contains(keyword));
 }
 
 // This adapter is deliberately restricted to HKU's timetable endpoint: its UID
